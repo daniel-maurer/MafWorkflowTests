@@ -1,0 +1,51 @@
+# Build results
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+# Visual Studio
+.vs/
+.vscode/
+*.sln.iml
+*.user
+*.userprefs
+*.suo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# NuGet
+.nuget/
+*.nupkg
+*.snupkg
+packages/
+
+# Test Results
+TestResults/
+.coverage/
+coverage/
+
+# Build artifacts
+dist/
+publish/
+
+# Runtime files
+*.onnx
+*.model
+
+.fake

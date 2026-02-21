@@ -1,0 +1,12 @@
+[
+  {
+      "problema": "Senha incorreta / Conta bloqueada",
+      "sintomas": ["senha incorreta", "não consigo logar", "conta bloqueada"],
+      "keywords": ["password", "reset", "senha", "palavra-passe", "esqueci", "bloqueio", "bloqueada", "locked", "incorrect", "conectividade", "internet", "rede", "conta"],
+      "solucao": "Desbloquear conta + enviar reset de senha",
+      "requer_acao": true,
+      "acao_mcp": "unlock_account_and_reset_password",
+      "taxa_sucesso": 0.94,
+      "prazo_resolucao": null
+  }
+]
