@@ -1,7 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
 
 namespace SupportWorkflow;
 

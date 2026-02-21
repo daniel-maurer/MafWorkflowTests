@@ -1,14 +1,14 @@
 using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
-using Microsoft.Extensions.AI;
+
 namespace SupportWorkflow;
 
 /// <summary>
 /// Executor responsible for identifying if a problem is a known issue and providing resolution.
 /// Limits iterations to prevent infinite loops.
 /// </summary>
-internal sealed class FrequentProblemExecutor : Executor<TriageResult>
+internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentProblemResult>
 {
     private readonly AIAgent _frequentProblemAgent;
     private readonly ConsoleInteractor _consoleInteractor;
@@ -33,7 +33,8 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult>
     /// <param name="triageResult">The result from the triage executor</param>
     /// <param name="context">The workflow context for state management</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    public override async ValueTask HandleAsync(TriageResult triageResult, IWorkflowContext context, CancellationToken cancellationToken = default)
+    /// <returns>A FrequentProblemResult containing the analysis</returns>
+    public override async ValueTask<FrequentProblemResult> HandleAsync(TriageResult triageResult, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         var summary = triageResult.Summary;
 
@@ -61,10 +62,29 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult>
                     throw new InvalidOperationException("Failed to deserialize FrequentProblemResult from agent response.");
                 }
                 
+                Console.WriteLine($"\n[FREQUENT PROBLEM EXECUTOR] Analysis Result - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
+                
                 if (frequentProblemResult.IsKnown || frequentProblemResult.IsComplex)
                 {
+                    // If known, try to load the full issue details from the knowledge base
+                    if (frequentProblemResult.IsKnown && string.IsNullOrEmpty(frequentProblemResult.MessageForUser) == false)
+                    {
+                        var keywords = ExtractKeywords(frequentProblemResult.MessageForUser);
+                        var matchedIssues = await FrequentProblemTools.GetKnownIssuesAsync(keywords, cancellationToken);
+                        
+                        if (matchedIssues.Count > 0)
+                        {
+                            frequentProblemResult.MatchedIssue = matchedIssues[0];
+                            frequentProblemResult.RequiredTools = matchedIssues[0].ToolsRequired ?? new List<string>();
+                            frequentProblemResult.SuccessRate = matchedIssues[0].SuccessRate;
+                            
+                            Console.WriteLine($"[FREQUENT PROBLEM EXECUTOR] Matched issue: {matchedIssues[0].Problem}");
+                            Console.WriteLine($"[FREQUENT PROBLEM EXECUTOR] Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
+                        }
+                    }
+                    
                     await context.YieldOutputAsync(frequentProblemResult, cancellationToken);
-                    return;
+                    return frequentProblemResult;
                 }
                 
                 string question = frequentProblemResult.MessageForUser;
@@ -78,6 +98,9 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult>
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"\n[FREQUENT PROBLEM EXECUTOR ERROR] Exception occurred: {ex.GetType().Name}");
+                Console.WriteLine($"[FREQUENT PROBLEM EXECUTOR ERROR] Message: {ex.Message}");
+                
                 var errorResult = new FrequentProblemResult
                 {
                     IsKnown = false,
@@ -97,5 +120,21 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult>
             MessageForUser = "The issue requires further investigation. It will be escalated to a specialist."
         };
         await context.YieldOutputAsync(escalationResult, cancellationToken);
+        return escalationResult;
+    }
+
+    /// <summary>
+    /// Extracts keywords from text by splitting on common delimiters.
+    /// </summary>
+    private static List<string> ExtractKeywords(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return new List<string>();
+
+        return text
+            .Split(new[] { ' ', ',', '.', ':', ';', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(word => word.Length > 2) // Filter out very short words
+            .Take(10) // Limit to first 10 words
+            .ToList();
     }
 }

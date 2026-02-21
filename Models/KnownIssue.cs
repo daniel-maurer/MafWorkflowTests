@@ -54,4 +54,10 @@ public class KnownIssue
     /// </summary>
     [JsonPropertyName("prazo_resolucao")]
     public TimeSpan? ResolutionTime { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Gets or sets the list of tools/functions that need to be called to resolve this issue.
+    /// </summary>
+    [JsonPropertyName("tools_required")]
+    public List<string> ToolsRequired { get; set; } = new List<string>();
 }

@@ -1,13 +1,9 @@
 using DotNetEnv;
-using System;
-using System.Threading.Tasks;
 using Azure.Identity;
-using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
-using System.Threading;
 using Azure.AI.OpenAI;
-using System.Text.Json;
+
 namespace SupportWorkflow;
 public class Program
 {
