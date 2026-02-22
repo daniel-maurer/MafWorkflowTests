@@ -13,6 +13,9 @@ public class Program
         {
             Env.Load();
             
+            // To disable logging, uncomment the line below:
+            // Logger.DisableLogging();
+            
             var configuration = WorkflowConfiguration.FromEnvironment();
             configuration.Validate();
 
@@ -28,10 +31,20 @@ public class Program
             await using StreamingRun handle = await InProcessExecution.StreamAsync(workflow, "Como posso ajudar?");
             await foreach (WorkflowEvent evt in handle.WatchStreamAsync())
             {
+                // Only print WorkflowOutputEvent if it contains a ResolutionResult or similar final result
+                // Skip intermediate messages to avoid duplication
                 if (evt is WorkflowOutputEvent outputEvent)
                 {
-                    Console.WriteLine($"{outputEvent}");
+                    var eventData = outputEvent.Data;
+                    // Only print if this is a final result (ResolutionResult or HumanSupportResult)
+                    // Skip intermediate JSON responses and intermediate outputs
+                    if (eventData is ResolutionResult or FrequentProblemResult or TriageResult)
+                    {
+                        // These are already handled by the executors with Logger.OutputUser
+                        continue;
+                    }
                 }
+                
                 switch (evt)
                 {
                     case RequestInfoEvent requestInputEvt:

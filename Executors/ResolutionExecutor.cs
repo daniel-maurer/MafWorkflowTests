@@ -39,9 +39,9 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
             throw new ArgumentNullException(nameof(frequentProblemResult), "FrequentProblemResult cannot be null");
         }
 
-        Console.WriteLine("\n[RESOLUTION EXECUTOR] Starting resolution process...");
-        Console.WriteLine($"[RESOLUTION EXECUTOR] Problem - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
-        Console.WriteLine($"[RESOLUTION EXECUTOR] Problem Details: {frequentProblemResult.MessageForUser}");
+        Logger.LogInfo("Starting resolution process...");
+        Logger.LogDebug($"Problem - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
+        Logger.LogDebug($"Problem Details: {frequentProblemResult.MessageForUser}");
         
         var actionsExecuted = new List<string>();
 
@@ -52,7 +52,7 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
             {
                 IsResolved = false,
                 RequiresHuman = true,
-                MessageForUser = "This issue requires human support. A specialist will contact you shortly.",
+                MessageForUser = "Este problema requer suporte humano. Um especialista entrará em contato em breve.",
                 EscalationReason = frequentProblemResult.IsComplex ? "Problem is too complex for automation" : "Problem is not recognized in our knowledge base",
                 ActionsExecuted = actionsExecuted
             };
@@ -63,7 +63,7 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
 
         // Problem is known and not complex, attempt resolution
         var toolsToCall = frequentProblemResult.RequiredTools ?? new List<string>();
-        Console.WriteLine($"\n[RESOLUTION EXECUTOR] Required tools: {string.Join(", ", toolsToCall)}");
+        Logger.LogDebug($"Required tools: {string.Join(", ", toolsToCall)}");
         
         var agentInput = $@"Resolva o seguinte problema:
 Problema: {frequentProblemResult.MatchedIssue?.Problem}
@@ -79,35 +79,53 @@ Explique o que fez para resolver o problema.";
 
         try
         {
-            Console.WriteLine("\n[RESOLUTION EXECUTOR] Calling ResolutionAgent...");
+            Logger.LogInfo("Calling ResolutionAgent...");
             var response = await this._resolutionAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
             
-            Console.WriteLine("\n[RESOLUTION EXECUTOR] Agent Response Received:");
-            Console.WriteLine($"{response.Text}");
+            Logger.LogInfo("Agent response received");
+            Logger.LogDebug($"Agent Response: {response.Text}");
+            
+            // Parse the JSON response to extract the user message
+            string userMessage = response.Text;
+            try
+            {
+                var agentResponse = JsonSerializer.Deserialize<JsonElement>(response.Text);
+                if (agentResponse.TryGetProperty("message_for_user", out var messageElement))
+                {
+                    userMessage = messageElement.GetString() ?? response.Text;
+                }
+            }
+            catch
+            {
+                // If parsing fails, use the full response
+                Logger.LogDebug("Failed to parse agent response as JSON, using full response");
+            }
+            
+            Logger.OutputUser($"\n{userMessage}");
             
             // Record which tools were meant to be called
             actionsExecuted.AddRange(toolsToCall);
             
             // Ask user for confirmation
-            string userConfirmation = _consoleInteractor.GetUserResponse("\n✓ Was your issue resolved? (yes/no)");
-            bool resolved = userConfirmation.ToLower() is "yes" or "s" or "y";
+            string userConfirmation = _consoleInteractor.GetUserResponse("\n✓ Seu problema foi resolvido? (sim/não)");
+            bool resolved = userConfirmation.ToLower() is "sim" or "s" or "yes" or "y";
             
             var resolutionOutcome = new ResolutionResult
             {
                 IsResolved = resolved,
                 RequiresHuman = !resolved,
-                MessageForUser = response.Text,
+                MessageForUser = userMessage,
                 ActionsExecuted = actionsExecuted,
                 EscalationReason = !resolved ? "User reported issue not resolved after automated resolution attempt" : null
             };
             
             await context.YieldOutputAsync(resolutionOutcome, cancellationToken);
-            Console.WriteLine("\n[RESOLUTION EXECUTOR] Resolution process completed successfully.");
+            Logger.LogInfo("Resolution process completed successfully");
             return resolutionOutcome;
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("\n[RESOLUTION EXECUTOR ERROR] Resolution process was cancelled.");
+            Logger.LogError("Resolution process was cancelled");
             var cancelledResult = new ResolutionResult
             {
                 IsResolved = false,
@@ -121,15 +139,15 @@ Explique o que fez para resolver o problema.";
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\n[RESOLUTION EXECUTOR ERROR] Exception occurred: {ex.GetType().Name}");
-            Console.WriteLine($"[RESOLUTION EXECUTOR ERROR] Message: {ex.Message}");
-            Console.WriteLine($"[RESOLUTION EXECUTOR ERROR] Stack Trace: {ex.StackTrace}");
+            Logger.LogError($"Exception occurred: {ex.GetType().Name}");
+            Logger.LogError($"Message: {ex.Message}");
+            Logger.LogDebug($"Stack Trace: {ex.StackTrace}");
             
             var errorResult = new ResolutionResult
             {
                 IsResolved = false,
                 RequiresHuman = true,
-                MessageForUser = $"An error occurred during resolution: {ex.Message}",
+                MessageForUser = $"Ocorreu um erro durante a resolução. Um especialista será contatado para ajudar.",
                 ActionsExecuted = actionsExecuted,
                 EscalationReason = $"Error during resolution: {ex.GetType().Name}"
             };

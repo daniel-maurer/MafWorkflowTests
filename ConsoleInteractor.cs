@@ -15,7 +15,7 @@ internal sealed class ConsoleInteractor
     {
         if (string.IsNullOrWhiteSpace(prompt))
         {
-            prompt = "Please enter your response:";
+            prompt = "Por favor, responda:";
         }
 
         while (true)
@@ -26,7 +26,7 @@ internal sealed class ConsoleInteractor
             {
                 return input;
             }
-            Console.WriteLine("Invalid input. Please enter a valid response.");
+            Console.WriteLine("Entrada inválida. Por favor, responda corretamente.");
         }
     }
 }

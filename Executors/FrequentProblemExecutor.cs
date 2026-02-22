@@ -62,7 +62,7 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                     throw new InvalidOperationException("Failed to deserialize FrequentProblemResult from agent response.");
                 }
                 
-                Console.WriteLine($"\n[FREQUENT PROBLEM EXECUTOR] Analysis Result - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
+                Logger.LogDebug($"Frequent Problem Analysis Result - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
                 
                 if (frequentProblemResult.IsKnown || frequentProblemResult.IsComplex)
                 {
@@ -78,8 +78,8 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                             frequentProblemResult.RequiredTools = matchedIssues[0].ToolsRequired ?? new List<string>();
                             frequentProblemResult.SuccessRate = matchedIssues[0].SuccessRate;
                             
-                            Console.WriteLine($"[FREQUENT PROBLEM EXECUTOR] Matched issue: {matchedIssues[0].Problem}");
-                            Console.WriteLine($"[FREQUENT PROBLEM EXECUTOR] Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
+                            Logger.LogInfo($"Matched issue: {matchedIssues[0].Problem}");
+                            Logger.LogDebug($"Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
                         }
                     }
                     
@@ -98,14 +98,13 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"\n[FREQUENT PROBLEM EXECUTOR ERROR] Exception occurred: {ex.GetType().Name}");
-                Console.WriteLine($"[FREQUENT PROBLEM EXECUTOR ERROR] Message: {ex.Message}");
+                Logger.LogError($"Frequent Problem Executor exception: {ex.GetType().Name} - {ex.Message}");
                 
                 var errorResult = new FrequentProblemResult
                 {
                     IsKnown = false,
                     IsComplex = true,
-                    MessageForUser = $"An error occurred during analysis: {ex.Message}"
+                    MessageForUser = "Ocorreu um erro durante a análise do problema. Por favor, tente novamente ou contacte o suporte."
                 };
                 await context.YieldOutputAsync(errorResult, cancellationToken);
                 throw;
@@ -113,11 +112,12 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
         }
         
         // If max iterations reached, escalate to complex case
+        Logger.LogInfo("Max iterations reached for frequent problem analysis. Escalating to specialist.");
         var escalationResult = new FrequentProblemResult
         {
             IsKnown = false,
             IsComplex = true,
-            MessageForUser = "The issue requires further investigation. It will be escalated to a specialist."
+            MessageForUser = "O problema requer investigação adicional. Será escalado para um especialista."
         };
         await context.YieldOutputAsync(escalationResult, cancellationToken);
         return escalationResult;

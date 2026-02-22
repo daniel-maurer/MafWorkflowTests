@@ -16,12 +16,12 @@ public static class ResolutionAgentTools
         [Description("Optional reason for the unlock request.")] string? reason = null,
         CancellationToken cancellationToken = default)
     {
-        Console.WriteLine($"[TOOL CALL] UnlockAccount - Account: {accountIdentifier}, Reason: {reason ?? "No reason provided"}");
+        Logger.LogDebug($"[TOOL CALL] UnlockAccount - Account: {accountIdentifier}, Reason: {reason ?? "No reason provided"}");
         
         // Simulate account unlock operation
         await Task.Delay(100, cancellationToken);
         
-        Console.WriteLine($"[TOOL RESULT] UnlockAccount - Success: Account {accountIdentifier} has been unlocked.");
+        Logger.LogDebug($"[TOOL RESULT] UnlockAccount - Success: Account {accountIdentifier} has been unlocked.");
         return true;
     }
 
@@ -36,12 +36,12 @@ public static class ResolutionAgentTools
         CancellationToken cancellationToken = default)
     {
         var paramStr = parameters != null ? string.Join(", ", parameters.Select(kvp => $"{kvp.Key}={kvp.Value}")) : "None";
-        Console.WriteLine($"[TOOL CALL] SendEmail - Recipient: {recipientEmail}, Type: {emailType}, Parameters: {paramStr}");
+        Logger.LogDebug($"[TOOL CALL] SendEmail - Recipient: {recipientEmail}, Type: {emailType}, Parameters: {paramStr}");
         
         // Simulate email sending operation
         await Task.Delay(150, cancellationToken);
         
-        Console.WriteLine($"[TOOL RESULT] SendEmail - Success: Email of type '{emailType}' sent to {recipientEmail}.");
+        Logger.LogDebug($"[TOOL RESULT] SendEmail - Success: Email of type '{emailType}' sent to {recipientEmail}.");
         return true;
     }
 

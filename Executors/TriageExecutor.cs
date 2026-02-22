@@ -37,6 +37,9 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
         var history = await context.ReadStateAsync<List<ChatMessage>>(Constants.ConversationHistoryKey, Constants.TriageStateScope) ?? new List<ChatMessage>();
         history.Add(new ChatMessage(ChatRole.User, userMessage));
         
+        Logger.LogInfo("Starting triage analysis for user message");
+        Logger.LogDebug($"User message: {userMessage}");
+        
         bool isUnderstood = false;
 
         while (!isUnderstood)
@@ -52,6 +55,9 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
                 await context.QueueStateUpdateAsync(Constants.ProblemSummaryKey, detectionResult.Summary, Constants.TriageStateScope);
                 
                 isUnderstood = true;
+                
+                Logger.LogInfo("Triage analysis complete - problem understood");
+                Logger.LogDebug($"Problem summary: {detectionResult.Summary}");
 
                 await context.YieldOutputAsync(detectionResult.Summary, cancellationToken);
 
@@ -61,6 +67,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
             {
                 if (detectionResult != null)
                 {
+                    Logger.LogDebug("Need more information - asking follow-up question");
                     history.Add(new ChatMessage(ChatRole.Assistant, detectionResult.QuestionForUser));
                     string nextUserMessage = _consoleInteractor.GetUserResponse(detectionResult.QuestionForUser);
                     history.Add(new ChatMessage(ChatRole.User, nextUserMessage));
@@ -69,6 +76,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
             }
         }
 
+        Logger.LogError("Failed to understand problem after multiple triage attempts");
         throw new InvalidOperationException("Failed to understand the problem after multiple attempts.");
     }
 }
