@@ -15,6 +15,7 @@ public static class WorkflowFactory
     /// 3. Conditional Routing:
     ///    - If problem is known and not complex → Resolution Agent (automated)
     ///    - If problem is unknown or complex → Human Support Executor (simulated)
+    /// 4. Pattern Record Agent → Records patterns for future automation
     /// </summary>
     /// <param name="chatClient">The chat client to use for all agents</param>
     /// <returns>A configured workflow instance</returns>
@@ -42,6 +43,10 @@ public static class WorkflowFactory
         // Human support executor for complex or unknown issues
         var humanSupportExecutor = new HumanSupportExecutor(consoleInteractor);
 
+        // Pattern record agent for learning and knowledge base updates
+        AIAgent patternRecordAgent = PatternRecordAgentFactory.GetPatternRecordAgent(chatClient);
+        var patternRecordExecutor = new PatternRecordExecutor(patternRecordAgent, consoleInteractor);
+
         // Build workflow with conditional edges
         return new WorkflowBuilder(userMessageRequestPort)
             .AddEdge(userMessageRequestPort, triageExecutor)
@@ -52,6 +57,9 @@ public static class WorkflowFactory
             // Route to Human Support if problem is unknown OR complex
             .AddEdge(frequentProblemExecutor, humanSupportExecutor, 
                 condition: GetComplexProblemCondition())
+            // Route to Pattern Record Agent after resolution (for both paths)
+            .AddEdge(resolutionExecutor, patternRecordExecutor)
+            .AddEdge(humanSupportExecutor, patternRecordExecutor)
             .Build();
     }
 

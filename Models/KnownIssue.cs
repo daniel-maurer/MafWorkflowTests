@@ -60,4 +60,22 @@ public class KnownIssue
     /// </summary>
     [JsonPropertyName("tools_required")]
     public List<string> ToolsRequired { get; set; } = new List<string>();
+
+    /// <summary>
+    /// Gets or sets whether this issue was recorded by an AI agent (true) or manually created (false).
+    /// </summary>
+    [JsonPropertyName("gravado_por_agente")]
+    public bool RecordedByAgent { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the timestamp when this issue was recorded.
+    /// </summary>
+    [JsonPropertyName("data_gravacao")]
+    public DateTime? RecordedDate { get; set; } = null;
+
+    /// <summary>
+    /// Gets or sets the agent version or name that recorded this issue (if RecordedByAgent is true).
+    /// </summary>
+    [JsonPropertyName("agente_versao")]
+    public string? AgentVersion { get; set; } = null;
 }

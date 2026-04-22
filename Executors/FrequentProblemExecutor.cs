@@ -44,83 +44,84 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
         }
 
         string currentProblem = summary;
-        int iterationCount = 0;
 
         var history = new List<string> { currentProblem };
-        while (iterationCount < Constants.MaxWorkflowIterations)
-        {
-            iterationCount++;
-            string agentInput = $"Problema do Usuário: {string.Join("\n", history)}";
-            
-            try
-            {
-                var response = await this._frequentProblemAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
-                var frequentProblemResult = JsonSerializer.Deserialize<FrequentProblemResult>(response.Text);
-                
-                if (frequentProblemResult == null)
-                {
-                    throw new InvalidOperationException("Failed to deserialize FrequentProblemResult from agent response.");
-                }
-                
-                Logger.LogDebug($"Frequent Problem Analysis Result - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
-                
-                if (frequentProblemResult.IsKnown || frequentProblemResult.IsComplex)
-                {
-                    // If known, try to load the full issue details from the knowledge base
-                    if (frequentProblemResult.IsKnown && string.IsNullOrEmpty(frequentProblemResult.MessageForUser) == false)
-                    {
-                        var keywords = ExtractKeywords(frequentProblemResult.MessageForUser);
-                        var matchedIssues = await FrequentProblemTools.GetKnownIssuesAsync(keywords, cancellationToken);
-                        
-                        if (matchedIssues.Count > 0)
-                        {
-                            frequentProblemResult.MatchedIssue = matchedIssues[0];
-                            frequentProblemResult.RequiredTools = matchedIssues[0].ToolsRequired ?? new List<string>();
-                            frequentProblemResult.SuccessRate = matchedIssues[0].SuccessRate;
-                            
-                            Logger.LogInfo($"Matched issue: {matchedIssues[0].Problem}");
-                            Logger.LogDebug($"Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
-                        }
-                    }
-                    
-                    await context.YieldOutputAsync(frequentProblemResult, cancellationToken);
-                    return frequentProblemResult;
-                }
-                
-                string question = frequentProblemResult.MessageForUser;
-                if (string.IsNullOrEmpty(question))
-                {
-                    question = "Por favor, forneça mais detalhes sobre o problema.";
-                }
-                
-                string nextResponse = _consoleInteractor.GetUserResponse(question);
-                history.Add(nextResponse);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Frequent Problem Executor exception: {ex.GetType().Name} - {ex.Message}");
-                
-                var errorResult = new FrequentProblemResult
-                {
-                    IsKnown = false,
-                    IsComplex = true,
-                    MessageForUser = "Ocorreu um erro durante a análise do problema. Por favor, tente novamente ou contacte o suporte."
-                };
-                await context.YieldOutputAsync(errorResult, cancellationToken);
-                throw;
-            }
-        }
+        string agentInput = $"Problema do Usuário: {string.Join("\n", history)}";
         
-        // If max iterations reached, escalate to complex case
-        Logger.LogInfo("Max iterations reached for frequent problem analysis. Escalating to specialist.");
-        var escalationResult = new FrequentProblemResult
+        try
         {
-            IsKnown = false,
-            IsComplex = true,
-            MessageForUser = "O problema requer investigação adicional. Será escalado para um especialista."
-        };
-        await context.YieldOutputAsync(escalationResult, cancellationToken);
-        return escalationResult;
+            // First, check if this matches a promoted pattern (high-confidence auto-resolution)
+            var keywords = ExtractKeywords(summary);
+            var promotedIssues = await FrequentProblemTools.GetPromotedPatternsAsync(keywords, cancellationToken);
+            
+            if (promotedIssues.Count > 0)
+            {
+                Logger.LogInfo($"Found promoted pattern for auto-resolution: {promotedIssues[0].Problem}");
+                var promotedResult = new FrequentProblemResult
+                {
+                    IsKnown = true,
+                    IsComplex = false,
+                    MatchedIssue = promotedIssues[0],
+                    RequiredTools = promotedIssues[0].ToolsRequired ?? new List<string>(),
+                    SuccessRate = promotedIssues[0].SuccessRate,
+                    MessageForUser = $"✓ Encontrada solução automática para: {promotedIssues[0].Problem}"
+                };
+                await context.YieldOutputAsync(promotedResult, cancellationToken);
+                return promotedResult;
+            }
+            
+            var response = await this._frequentProblemAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
+            var frequentProblemResult = JsonSerializer.Deserialize<FrequentProblemResult>(response.Text);
+            
+            if (frequentProblemResult == null)
+            {
+                throw new InvalidOperationException("Failed to deserialize FrequentProblemResult from agent response.");
+            }
+            
+            Logger.LogDebug($"Frequent Problem Analysis Result - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
+            
+            // Always return the result - let the workflow routing decide what to do next
+            // If it's known and not complex, route to resolution; otherwise route to human support
+            if (frequentProblemResult.IsKnown && !frequentProblemResult.IsComplex)
+            {
+                // If known, try to load the full issue details from the knowledge base
+                if (string.IsNullOrEmpty(frequentProblemResult.MessageForUser) == false)
+                {
+                    var searchKeywords = ExtractKeywords(summary);
+                    var matchedIssues = await FrequentProblemTools.GetKnownIssuesAsync(searchKeywords, cancellationToken);
+                    
+                    if (matchedIssues.Count > 0)
+                    {
+                        frequentProblemResult.MatchedIssue = matchedIssues[0];
+                        frequentProblemResult.RequiredTools = matchedIssues[0].ToolsRequired ?? new List<string>();
+                        frequentProblemResult.SuccessRate = matchedIssues[0].SuccessRate;
+                        
+                        Logger.LogInfo($"Matched issue: {matchedIssues[0].Problem}");
+                        Logger.LogDebug($"Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
+                    }
+                }
+                
+                await context.YieldOutputAsync(frequentProblemResult, cancellationToken);
+                return frequentProblemResult;
+            }
+            
+            // For unknown or complex problems, return the result to route to human support
+            await context.YieldOutputAsync(frequentProblemResult, cancellationToken);
+            return frequentProblemResult;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Frequent Problem Executor exception: {ex.GetType().Name} - {ex.Message}");
+            
+            var errorResult = new FrequentProblemResult
+            {
+                IsKnown = false,
+                IsComplex = true,
+                MessageForUser = "Ocorreu um erro durante a análise do problema. Por favor, tente novamente ou contacte o suporte."
+            };
+            await context.YieldOutputAsync(errorResult, cancellationToken);
+            throw;
+        }
     }
 
     /// <summary>

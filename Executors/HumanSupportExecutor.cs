@@ -11,6 +11,15 @@ namespace SupportWorkflow;
 internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, ResolutionResult>
 {
     private readonly ConsoleInteractor _consoleInteractor;
+    private static readonly HashSet<string> CompletionCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "[COMPLETED]",
+        "COMPLETED",
+        "[FINALIZAR]",
+        "FINALIZAR",
+        "[FIM]",
+        "FIM"
+    };
 
     /// <summary>
     /// Initializes a new instance of the HumanSupportExecutor.
@@ -37,52 +46,75 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
 
         Logger.LogInfo("Starting human support handling for complex/unknown issue");
         Logger.OutputUser("\n" + new string('=', 80));
-        Logger.OutputUser("[ATENDENTE SUPORTE] Vamos passar o atendimento para um humano especialista");
+        Logger.OutputUser("[ATENDENTE SUPORTE] Agora você controla o atendimento humano via terminal.");
+        Logger.OutputUser("[ATENDENTE SUPORTE] Digite a fala do atendente humano e a fala do usuário em sequência.");
+        Logger.OutputUser("[ATENDENTE SUPORTE] Para encerrar o atendimento humano a qualquer momento, digite [COMPLETED] ou FINALIZAR.");
         Logger.OutputUser(new string('=', 80));
-        
-        // Simulate agent saying they'll escalate
-        await Task.Delay(500, cancellationToken);
-        
-        Logger.OutputUser("\n[ATENDENTE SUPORTE] Aguarde um momento enquanto você é conectado...\n");
-        Logger.LogDebug("Waiting for human support connection...");
-        await Task.Delay(1000, cancellationToken);
 
-        // Simulate human support agent taking over
-        Logger.OutputUser("[ATENDENTE HUMANO] Olá! Estou com as informações do seu problema e já estou resolvendo.");
-        Logger.OutputUser("[ATENDENTE HUMANO] Por favor aguarde enquanto analiso a situação...\n");
-        Logger.LogDebug("Human agent taking over conversation");
-        await Task.Delay(1000, cancellationToken);
+        string humanAgentResponse = _consoleInteractor.GetUserResponse("[ATENDENTE HUMANO] ");
+        if (TryCompleteCommand(humanAgentResponse, out var completionResult))
+        {
+            await context.YieldOutputAsync(completionResult, cancellationToken);
+            return completionResult;
+        }
+        Logger.OutputUser($"[ATENDENTE HUMANO] {humanAgentResponse}");
+        Logger.LogDebug($"Human agent said: {humanAgentResponse}");
 
-        // Get user acknowledgment
-        string userAck = _consoleInteractor.GetUserResponse("[USUÁRIO] Sua resposta");
-        Logger.OutputUser($"\n[USUÁRIO] {userAck}\n");
-        Logger.LogDebug($"User acknowledged: {userAck}");
-        await Task.Delay(500, cancellationToken);
+        string userReply = _consoleInteractor.GetUserResponse("[USUÁRIO] ");
+        if (TryCompleteCommand(userReply, out completionResult))
+        {
+            await context.YieldOutputAsync(completionResult, cancellationToken);
+            return completionResult;
+        }
+        Logger.OutputUser($"[USUÁRIO] {userReply}");
+        Logger.LogDebug($"User replied: {userReply}");
 
-        // Human specialist provides solution
-        string resolution = GetSimulatedResolution(frequentProblemResult.MessageForUser);
-        Logger.OutputUser("[ESPECIALISTA HUMANO] " + resolution);
-        Logger.OutputUser("");
-        Logger.LogDebug($"Solution provided by specialist");
-        await Task.Delay(1000, cancellationToken);
+        // Considera a última resposta do atendente como final
+        string finalHumanResponse = humanAgentResponse;
 
-        // Get user confirmation
-        string confirmation = _consoleInteractor.GetUserResponse("[USUÁRIO] Sua resposta");
-        Logger.OutputUser($"\n[USUÁRIO] {confirmation}\n");
+        string confirmation = _consoleInteractor.GetUserResponse("[USUÁRIO] (sim/não) ");
+        Logger.OutputUser($"[USUÁRIO] {confirmation}\n");
         Logger.LogDebug($"User confirmation: {confirmation}");
-        
-        bool isResolved = confirmation.ToLower() is "ok" or "obrigado" or "tá bom" or "valeu" or "sim" or "s" or "yes" or "ok, obrigado" or "muito obrigado";
+
+        bool isResolved = confirmation.Trim().ToLowerInvariant() is "ok" or "obrigado" or "tá bom" or "valeu" or "sim" or "s" or "yes" or "ok, obrigado" or "muito obrigado" or "resolvido";
 
         Logger.OutputUser(new string('=', 80));
         Logger.OutputUser("[SISTEMA] Finalizando atendimento com suporte humano");
         Logger.OutputUser(new string('=', 80) + "\n");
         Logger.LogInfo($"Human support interaction completed - Issue resolved: {isResolved}");
 
+        // Identify patterns from this human support interaction
+        if (isResolved)
+        {
+            try
+            {
+                Logger.LogInfo("Analyzing interaction for pattern identification...");
+                var identifiedPatterns = await PatternIdentifier.IdentifyPatternsAsync(
+                    frequentProblemResult.MessageForUser,
+                    finalHumanResponse,
+                    isResolved,
+                    cancellationToken);
+
+                if (identifiedPatterns.Count > 0)
+                {
+                    Logger.LogInfo($"Identified {identifiedPatterns.Count} pattern(s) from human support interaction");
+                    foreach (var pattern in identifiedPatterns)
+                    {
+                        Logger.LogInfo($"  - {pattern.PatternDescription} (Confidence: {pattern.Confidence:P})");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Error during pattern identification: {ex.Message}");
+            }
+        }
+
         var resolutionResult = new ResolutionResult
         {
             IsResolved = isResolved,
             RequiresHuman = false, // Already handled by human
-            MessageForUser = $"Atendimento humano concluído. Problema resolvido: {isResolved}",
+            MessageForUser = $"Atendimento humano concluído. Problema resolvido: {isResolved}. Última resposta do atendente: {finalHumanResponse}",
             ActionsExecuted = new List<string> { "HumanSupport" },
             EscalationReason = "Problema complexo ou desconhecido - resolvido por especialista humano"
         };
@@ -91,33 +123,33 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         return resolutionResult;
     }
 
-    /// <summary>
-    /// Generates a simulated resolution response based on the problem description.
-    /// </summary>
-    /// <param name="problemDescription">The description of the problem from the user</param>
-    /// <returns>A simulated resolution message</returns>
-    private string GetSimulatedResolution(string problemDescription)
+    private static bool TryCompleteCommand(string input, out ResolutionResult completionResult)
     {
-        var resolutions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        if (input is null)
         {
-            { "queda", "Seu problema é uma queda do sistema. Em 15 minutos o sistema voltará ao ar. Não precisa fazer nada, só aguardar." },
-            { "lento", "O sistema está lento porque temos uma manutenção em andamento. Deverá voltar ao normal em 30 minutos. Recomendo fazer uma pausa." },
-            { "erro", "Identificamos um erro na sua conta. Vou resetar suas permissões agora. Tente fazer login novamente em 2 minutos." },
-            { "acesso", "Seu acesso foi bloqueado por segurança. Vou desbloqueá-lo e enviar um email com instruções para resetar sua senha." },
-            { "conexão", "Temos um problema com a conexão do seu servidor. Estou reiniciando-o agora, deve estar online em 5 minutos." },
-            { "dados", "Seus dados foram recuperados com sucesso. Estou enviando um arquivo com todas as informações por email." }
-        };
-
-        // Try to find a matching resolution
-        foreach (var resolution in resolutions)
-        {
-            if (problemDescription.Contains(resolution.Key, StringComparison.OrdinalIgnoreCase))
-            {
-                return resolution.Value;
-            }
+            completionResult = default!;
+            return false;
         }
 
-        // Default resolution
-        return "Identifiquei seu problema. Estou tomando as ações necessárias para resolvê-lo. Você receberá um email em breve com mais detalhes. Obrigado pela paciência!";
+        if (!CompletionCommands.Contains(input.Trim()))
+        {
+            completionResult = default!;
+            return false;
+        }
+
+        completionResult = new ResolutionResult
+        {
+            IsResolved = false,
+            RequiresHuman = false,
+            MessageForUser = "Atendimento humano encerrado pelo comando de finalização.",
+            ActionsExecuted = new List<string> { "HumanSupport" },
+            EscalationReason = "Atendimento humano terminado por comando de encerramento"
+        };
+        return true;
+    }
+
+    private static bool IsCompletionCommand(string input)
+    {
+        return input is not null && CompletionCommands.Contains(input.Trim());
     }
 }

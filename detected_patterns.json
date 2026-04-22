@@ -1,0 +1,37 @@
+[
+  {
+    "id": "ed093beb-2586-4011-9c8c-4b96aae89455",
+    "pattern_description": "Pattern involving problema, cliente, com, vale, refei\u00E7\u00E3o",
+    "frequency": 1,
+    "first_detected": "2026-04-22T18:20:59.517803Z",
+    "last_detected": "2026-04-22T18:20:59.5178409Z",
+    "example_symptoms": [
+      "O problema do cliente com o vale refei\u00E7\u00E3o n\u00E3o est\u00E1 listado como um problema conhecido. N\u00E3o possui um prazo de solu\u00E7\u00E3o cadastrado para este caso espec\u00EDfico."
+    ],
+    "example_solutions": [
+      "Esse m\u00EAs ser\u00E1 pago no dia 25"
+    ],
+    "confidence": 0.8500000000000001,
+    "promoted_to_known_issue": false,
+    "temporal_characteristics": "Timing or delay aspect detected",
+    "linked_known_issue": null
+  },
+  {
+    "id": "b3785bbc-8054-4020-9730-fe88c41b97f5",
+    "pattern_description": "Clientes relatam n\u00E3o recebimento de benef\u00EDcios como vale refei\u00E7\u00E3o, indicando um problema recorrente na gest\u00E3o de pagamentos.",
+    "frequency": 1,
+    "first_detected": "2026-04-22T18:21:01.8039967Z",
+    "last_detected": "2026-04-22T18:21:01.8039968Z",
+    "example_symptoms": [
+      "Cliente n\u00E3o recebe o vale refei\u00E7\u00E3o no prazo",
+      "Incerteza sobre a data de pagamento"
+    ],
+    "example_solutions": [
+      "Comunique-se com o cliente e informe a data estimada de pagamento do benef\u00EDcio."
+    ],
+    "confidence": 0.85,
+    "promoted_to_known_issue": false,
+    "temporal_characteristics": "Mensal",
+    "linked_known_issue": null
+  }
+]
