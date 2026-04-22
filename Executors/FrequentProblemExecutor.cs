@@ -50,26 +50,6 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
         
         try
         {
-            // First, check if this matches a promoted pattern (high-confidence auto-resolution)
-            var keywords = ExtractKeywords(summary);
-            var promotedIssues = await FrequentProblemTools.GetPromotedPatternsAsync(keywords, cancellationToken);
-            
-            if (promotedIssues.Count > 0)
-            {
-                Logger.LogInfo($"Found promoted pattern for auto-resolution: {promotedIssues[0].Problem}");
-                var promotedResult = new FrequentProblemResult
-                {
-                    IsKnown = true,
-                    IsComplex = false,
-                    MatchedIssue = promotedIssues[0],
-                    RequiredTools = promotedIssues[0].ToolsRequired ?? new List<string>(),
-                    SuccessRate = promotedIssues[0].SuccessRate,
-                    MessageForUser = $"✓ Encontrada solução automática para: {promotedIssues[0].Problem}"
-                };
-                await context.YieldOutputAsync(promotedResult, cancellationToken);
-                return promotedResult;
-            }
-            
             var response = await this._frequentProblemAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
             var frequentProblemResult = JsonSerializer.Deserialize<FrequentProblemResult>(response.Text);
             
@@ -98,6 +78,15 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                         
                         Logger.LogInfo($"Matched issue: {matchedIssues[0].Problem}");
                         Logger.LogDebug($"Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
+                    }
+                    else
+                    {
+                        Logger.LogInfo("No known issue match found; routing to human support.");
+                        frequentProblemResult.IsKnown = false;
+                        frequentProblemResult.IsComplex = true;
+                        frequentProblemResult.MessageForUser = "Problema não corresponde a uma issue conhecida. Encaminhando para suporte humano.";
+                        frequentProblemResult.RequiredTools = new List<string>();
+                        frequentProblemResult.SuccessRate = 0;
                     }
                 }
                 

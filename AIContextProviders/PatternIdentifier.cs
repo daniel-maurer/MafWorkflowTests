@@ -53,6 +53,12 @@ public class PatternIdentifier
         var lowerProblem = userProblem.ToLowerInvariant();
         var lowerSolution = (humanSolution ?? string.Empty).ToLowerInvariant();
 
+        if (IsUserActionRequest(lowerProblem, lowerSolution))
+        {
+            Logger.LogInfo("Skipped pattern recording for user-specific action request.");
+            return null;
+        }
+
         var commonWords = new[]
         {
             "the", "and", "you", "que", "for", "with", "from", "não", "nao", "uma", "um", "as", "em", "de", "ou", "o", "a", "is", "are", "was", "were"
@@ -93,6 +99,28 @@ public class PatternIdentifier
             TemporalCharacteristics = HasTemporalContext(lowerProblem) ? "Timing or delay aspect detected" : null,
             PromotedToKnownIssue = false
         };
+    }
+
+    private static bool IsUserActionRequest(string lowerProblem, string lowerSolution)
+    {
+        var combinedText = string.Concat(lowerProblem, " ", lowerSolution);
+
+        var requestIndicators = new[]
+        {
+            "por favor", "preciso", "quero", "gostaria", "poderia", "pode", "ajuda", "solicito",
+            "me ajude", "me ajuda", "faça", "faça isso", "mande", "envie", "cancelar", "alterar"
+        };
+
+        var issueIndicators = new[]
+        {
+            "problema", "erro", "falha", "atraso", "não recebi", "não recebo", "não consegui", "não consigo",
+            "não funciona", "não chegou", "status", "confirmação", "falta", "reclamação", "falha"
+        };
+
+        bool looksLikeRequest = requestIndicators.Any(combinedText.Contains);
+        bool looksLikeGenericIssue = issueIndicators.Any(combinedText.Contains);
+
+        return looksLikeRequest && !looksLikeGenericIssue;
     }
 
     private static bool HasTemporalContext(string lowerText)
@@ -258,7 +286,7 @@ public class PatternIdentifier
             // Check if any patterns should be promoted to known issues
             foreach (var pattern in existingPatterns)
             {
-                if (!pattern.PromotedToKnownIssue && pattern.Frequency >= 3 && pattern.Confidence >= 0.75)
+                if (KnowledgeBasePersistence.KnownIssueWritesEnabled && !pattern.PromotedToKnownIssue && pattern.Frequency >= 3 && pattern.Confidence >= 0.75)
                 {
                     Logger.LogInfo($"Pattern '{pattern.PatternDescription}' meets promotion criteria (Frequency: {pattern.Frequency}, Confidence: {pattern.Confidence:F2})");
                     await KnowledgeBasePersistence.PromotePatternToKnownIssueAsync(pattern, cancellationToken);

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Encodings.Web;
 
 namespace SupportWorkflow;
 
@@ -9,7 +10,14 @@ public static class KnowledgeBasePersistence
 {
     private const string KnownIssuesFile = "know_issues.json";
     private const string DetectedPatternsFile = "detected_patterns.json";
-    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+    private static readonly bool EnableKnownIssueWrites = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_KNOWN_ISSUE_WRITES"), out var enabled) && enabled;
+
+    public static bool KnownIssueWritesEnabled => EnableKnownIssueWrites;
 
     /// <summary>
     /// Reads all known issues from the knowledge base file.
@@ -42,10 +50,16 @@ public static class KnowledgeBasePersistence
     /// <param name="cancellationToken">Cancellation token</param>
     public static async Task WriteKnownIssuesAsync(List<KnownIssue> issues, CancellationToken cancellationToken = default)
     {
+        if (!EnableKnownIssueWrites)
+        {
+            Logger.LogInfo("Known issue writes are disabled; skipping write to know_issues.json.");
+            return;
+        }
+
         try
         {
             var jsonContent = JsonSerializer.Serialize(issues, JsonOptions);
-            await File.WriteAllTextAsync(KnownIssuesFile, jsonContent, cancellationToken);
+            await File.WriteAllTextAsync(KnownIssuesFile, jsonContent, System.Text.Encoding.UTF8, cancellationToken);
             Logger.LogInfo($"Successfully saved {issues.Count} known issues to {KnownIssuesFile}");
         }
         catch (Exception ex)
@@ -88,7 +102,7 @@ public static class KnowledgeBasePersistence
         try
         {
             var jsonContent = JsonSerializer.Serialize(patterns, JsonOptions);
-            await File.WriteAllTextAsync(DetectedPatternsFile, jsonContent, cancellationToken);
+            await File.WriteAllTextAsync(DetectedPatternsFile, jsonContent, System.Text.Encoding.UTF8, cancellationToken);
             Logger.LogInfo($"Successfully saved {patterns.Count} detected patterns to {DetectedPatternsFile}");
         }
         catch (Exception ex)
@@ -104,6 +118,12 @@ public static class KnowledgeBasePersistence
     /// <param name="cancellationToken">Cancellation token</param>
     public static async Task PromotePatternToKnownIssueAsync(PatternRecord pattern, CancellationToken cancellationToken = default)
     {
+        if (!EnableKnownIssueWrites)
+        {
+            Logger.LogInfo($"Known issue promotion is disabled; skipping promotion of pattern: {pattern.PatternDescription}");
+            return;
+        }
+
         try
         {
             var knownIssues = await ReadKnownIssuesAsync(cancellationToken);

@@ -55,6 +55,11 @@ public static class FrequentProblemTools
         [Description("The keywords to search for promoted patterns.")] List<string> keyWords,
         CancellationToken cancellationToken = default)
     {
+        if (!KnowledgeBasePersistence.KnownIssueWritesEnabled)
+        {
+            return new List<KnownIssue>();
+        }
+
         string detectedPatternsPath = "detected_patterns.json";
 
         if (!File.Exists(detectedPatternsPath))

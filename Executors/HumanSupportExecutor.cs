@@ -83,32 +83,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         Logger.OutputUser(new string('=', 80) + "\n");
         Logger.LogInfo($"Human support interaction completed - Issue resolved: {isResolved}");
 
-        // Identify patterns from this human support interaction
-        if (isResolved)
-        {
-            try
-            {
-                Logger.LogInfo("Analyzing interaction for pattern identification...");
-                var identifiedPatterns = await PatternIdentifier.IdentifyPatternsAsync(
-                    frequentProblemResult.MessageForUser,
-                    finalHumanResponse,
-                    isResolved,
-                    cancellationToken);
-
-                if (identifiedPatterns.Count > 0)
-                {
-                    Logger.LogInfo($"Identified {identifiedPatterns.Count} pattern(s) from human support interaction");
-                    foreach (var pattern in identifiedPatterns)
-                    {
-                        Logger.LogInfo($"  - {pattern.PatternDescription} (Confidence: {pattern.Confidence:P})");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError($"Error during pattern identification: {ex.Message}");
-            }
-        }
+        // Pattern recording is handled later by the PatternRecordExecutor.
 
         var resolutionResult = new ResolutionResult
         {

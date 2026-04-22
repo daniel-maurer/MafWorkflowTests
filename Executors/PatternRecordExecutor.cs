@@ -124,6 +124,7 @@ Por favor, analise este caso e extraia:
 6. Com que frequência este padrão provavelmente ocorre?
 7. Qual é a taxa de sucesso esperada?
 8. Este padrão está pronto para automação?
+9. Se a resolução incluir uma data de pagamento ou prazo específico, descreva a solução exatamente como deve ser comunicada ao usuário, incluindo essa data ou prazo.
 
 Seja específico e forneça informações que possam ser usadas para treinar o sistema.";
     }
@@ -133,6 +134,12 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
     /// </summary>
     private async Task PersistPatternAsync(PatternRecordResult patternResult, CancellationToken cancellationToken)
     {
+        if (!ShouldPersistPattern(patternResult))
+        {
+            Logger.LogInfo($"Skipped recording generic or low-value pattern: {patternResult.PatternDescription}");
+            return;
+        }
+
         try
         {
             // Convert PatternRecordResult to PatternRecord
@@ -146,7 +153,7 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
                 ExampleSymptoms = patternResult.ExampleSymptoms,
                 ExampleSolutions = new List<string> { patternResult.Solution },
                 TemporalCharacteristics = patternResult.TemporalInfo,
-                PromotedToKnownIssue = patternResult.ReadyForAutomation
+                PromotedToKnownIssue = KnowledgeBasePersistence.KnownIssueWritesEnabled && patternResult.ReadyForAutomation
             };
 
             // Read existing patterns
@@ -154,7 +161,7 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
 
             // Check if pattern already exists
             var duplicatePattern = existingPatterns.FirstOrDefault(p =>
-                p.PatternDescription.Equals(patternResult.PatternDescription, StringComparison.OrdinalIgnoreCase));
+                ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription));
 
             if (duplicatePattern != null)
             {
@@ -189,13 +196,14 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
             }
 
             // Check if pattern should be promoted
-            if (patternResult.ReadyForAutomation || (existingPatterns.FirstOrDefault(p => 
-                p.PatternDescription == patternResult.PatternDescription)?.Frequency >= 3 && 
-                patternResult.SuccessRate >= 0.75))
+            if (KnowledgeBasePersistence.KnownIssueWritesEnabled &&
+                (patternResult.ReadyForAutomation || (existingPatterns.FirstOrDefault(p => 
+                    ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription))?.Frequency >= 3 && 
+                    patternResult.SuccessRate >= 0.75)))
             {
                 Logger.LogInfo($"Pattern '{patternResult.PatternDescription}' ready for promotion");
                 var patternToPromote = existingPatterns.FirstOrDefault(p =>
-                    p.PatternDescription == patternResult.PatternDescription);
+                    ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription));
 
                 if (patternToPromote != null)
                 {
@@ -210,6 +218,54 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
         {
             Logger.LogError($"Failed to persist pattern: {ex.Message}");
         }
+    }
+
+    private static bool ShouldPersistPattern(PatternRecordResult patternResult)
+    {
+        if (patternResult == null)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(patternResult.PatternDescription))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(patternResult.PatternType) || patternResult.PatternType.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(patternResult.Solution))
+        {
+            return false;
+        }
+
+        if (patternResult.Solution.Contains("Solution needs verification", StringComparison.OrdinalIgnoreCase)
+            || patternResult.Solution.Contains("solução precisa de verificação", StringComparison.OrdinalIgnoreCase)
+            || patternResult.Solution.Contains("no known solution", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (patternResult.PatternDescription.StartsWith("Pattern involving", StringComparison.OrdinalIgnoreCase))
+        {
+            var descriptionKeywords = patternResult.PatternDescription
+                .Replace("Pattern involving", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Split(new[] { ' ', ',', '.', ';', ':', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(word => word.Length > 3)
+                .Where(word => !new[] { "pattern", "involving", "and", "or", "problema", "problemas", "cliente", "clientes" }
+                    .Contains(word, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            if (descriptionKeywords.Count < 3 && patternResult.Keywords.Count < 3)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -248,5 +304,43 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
             SuccessRate = 0,
             ReadyForAutomation = false
         };
+    }
+
+    /// <summary>
+    /// Checks if two pattern descriptions are similar based on common keywords.
+    /// </summary>
+    private static bool ArePatternsSimilar(string desc1, string desc2)
+    {
+        if (string.IsNullOrEmpty(desc1) || string.IsNullOrEmpty(desc2))
+            return false;
+
+        // Normalize and split into words
+        var words1 = desc1.ToLowerInvariant()
+            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
+            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2) // Ignore short words
+            .ToHashSet();
+
+        var words2 = desc2.ToLowerInvariant()
+            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
+            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2)
+            .ToHashSet();
+
+        // Check for significant overlap
+        var intersection = words1.Intersect(words2).Count();
+        var union = words1.Union(words2).Count();
+
+        if (union == 0) return false;
+
+        var similarity = (double)intersection / union;
+
+        // Also check for key phrases
+        var keyPhrases = new[] { "vale refeicao", "nao recebimento", "beneficios", "pagamento", "atraso", "cliente" };
+        var hasCommonPhrase = keyPhrases.Any(phrase =>
+            desc1.ToLowerInvariant().Contains(phrase.Replace(" ", "")) &&
+            desc2.ToLowerInvariant().Contains(phrase.Replace(" ", "")));
+
+        return similarity >= 0.4 || hasCommonPhrase;
     }
 }

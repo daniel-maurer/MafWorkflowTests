@@ -1,13 +1,115 @@
-[
+﻿[
   {
-      "problema": "Senha incorreta / Conta bloqueada",
-      "sintomas": ["senha incorreta", "não consigo logar", "conta bloqueada"],
-      "keywords": ["password", "reset", "senha", "palavra-passe", "esqueci", "bloqueio", "bloqueada", "locked", "incorrect", "conectividade", "internet", "rede", "conta"],
-      "solucao": "Desbloquear conta + enviar email para reset de senha",
-      "requer_acao": true,
-      "acao_mcp": "unlock_account_and_reset_password",
-      "taxa_sucesso": 0.94,
-      "prazo_resolucao": null,
-      "tools_required": ["UnlockAccount", "SendEmail"]
+    "problema": "Senha incorreta / Conta bloqueada",
+    "sintomas": [
+      "senha incorreta",
+      "não consigo logar",
+      "conta bloqueada"
+    ],
+    "keywords": [
+      "password",
+      "reset",
+      "senha",
+      "palavra-passe",
+      "esqueci",
+      "bloqueio",
+      "bloqueada",
+      "locked",
+      "incorrect",
+      "conectividade",
+      "internet",
+      "rede",
+      "conta"
+    ],
+    "solucao": "Desbloquear conta + enviar email para reset de senha",
+    "requer_acao": true,
+    "acao_mcp": "unlock_account_and_reset_password",
+    "taxa_sucesso": 0.94,
+    "prazo_resolucao": null,
+    "tools_required": [
+      "UnlockAccount",
+      "SendEmail"
+    ],
+    "gravado_por_agente": false,
+    "data_gravacao": null,
+    "agente_versao": null
+  },
+  {
+    "problema": "Funcionários relatam que não receberam vale-refeição ou outros benefícios programados.",
+    "sintomas": [
+      "Cliente não recebeu vale-refeição no mês atual",
+      "Dúvidas sobre o prazo de pagamento do VR",
+      "Solicitação de verificaçāo do pagamento"
+    ],
+    "keywords": [
+      "cliente",
+      "recebeu",
+      "vale",
+      "refeição",
+      "atual",
+      "dúvidas",
+      "sobre",
+      "prazo",
+      "pagamento",
+      "solicitação",
+      "verificaçāo",
+      "mensal"
+    ],
+    "solucao": "O VR será pago no dia 25 do mês corrente.",
+    "requer_acao": true,
+    "acao_mcp": "pattern_detected_action",
+    "taxa_sucesso": 0.95,
+    "prazo_resolucao": "00:00:00",
+    "tools_required": [],
+    "gravado_por_agente": false,
+    "data_gravacao": null,
+    "agente_versao": null
+  },
+  {
+    "problema": "Problemas relacionados a atrasos na entrega de benefícios, como vale refeição, que requerem comunicação específica sobre datas de pagamento.",
+    "sintomas": [
+      "Não recebido vale refeição",
+      "Confusão sobre datas de pagamento",
+      "Cliente não recebeu o pagamento de vale-refeição",
+      "Cliente se queixa de atraso no pagamento de benefícios",
+      "Incerteza sobre a data do pagamento",
+      "cliente não recebeu pagamento",
+      "atraso em pagamentos",
+      "dúvidas sobre benefícios",
+      "cliente não recebeu vale refeição",
+      "benefícios atrasados",
+      "vales não creditados"
+    ],
+    "keywords": [
+      "recebido",
+      "vale",
+      "refeição",
+      "confusão",
+      "sobre",
+      "datas",
+      "pagamento",
+      "cliente",
+      "recebeu",
+      "queixa",
+      "atraso",
+      "benefícios",
+      "incerteza",
+      "data",
+      "pagamentos",
+      "dúvidas",
+      "atrasados",
+      "vales",
+      "creditados",
+      "mensal"
+    ],
+    "solucao": "Informar ao cliente que o pagamento será realizado no dia 25/04 e que deve aguardar até essa data para a confirmação do recebimento.",
+    "requer_acao": true,
+    "acao_mcp": "pattern_detected_action",
+    "taxa_sucesso": 0.95,
+    "prazo_resolucao": "00:00:00",
+    "tools_required": [],
+    "gravado_por_agente": false,
+    "data_gravacao": null,
+    "agente_versao": null
   }
 ]

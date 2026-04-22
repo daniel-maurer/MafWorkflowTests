@@ -159,7 +159,8 @@ public static class PatternIdentificationTools
             bool promoted = false;
 
             if (
-                !patternToCheck.PromotedToKnownIssue
+                KnowledgeBasePersistence.KnownIssueWritesEnabled
+                && !patternToCheck.PromotedToKnownIssue
                 && patternToCheck.Frequency >= 3
                 && patternToCheck.Confidence >= 0.75
             )
@@ -215,6 +216,17 @@ public static class PatternIdentificationTools
         CancellationToken cancellationToken
     )
     {
+        if (!KnowledgeBasePersistence.KnownIssueWritesEnabled)
+        {
+            Logger.LogInfo($"Known issue promotion disabled; skipping direct promotion of '{problemTitle}'");
+            return new PatternPromotionResult
+            {
+                Success = false,
+                Message = "Known issue promotion is disabled.",
+                IssueProblem = problemTitle,
+            };
+        }
+
         try
         {
             // Validate confidence level

@@ -62,6 +62,20 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
         }
 
         // Problem is known and not complex, attempt resolution
+        if (frequentProblemResult.MatchedIssue == null || string.IsNullOrWhiteSpace(frequentProblemResult.MatchedIssue.Solution))
+        {
+            var escalationResult = new ResolutionResult
+            {
+                IsResolved = false,
+                RequiresHuman = true,
+                MessageForUser = "Este problema requer suporte humano. Um especialista entrará em contato em breve.",
+                EscalationReason = "Known issue has no resolvable matched issue or solution",
+                ActionsExecuted = actionsExecuted
+            };
+            await context.YieldOutputAsync(escalationResult, cancellationToken);
+            return escalationResult;
+        }
+
         var toolsToCall = frequentProblemResult.RequiredTools ?? new List<string>();
         Logger.LogDebug($"Required tools: {string.Join(", ", toolsToCall)}");
         

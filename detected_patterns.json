@@ -1,37 +1,69 @@
-[
+﻿[
   {
-    "id": "ed093beb-2586-4011-9c8c-4b96aae89455",
-    "pattern_description": "Pattern involving problema, cliente, com, vale, refei\u00E7\u00E3o",
-    "frequency": 1,
-    "first_detected": "2026-04-22T18:20:59.517803Z",
-    "last_detected": "2026-04-22T18:20:59.5178409Z",
+    "id": "ed61c4dc-d87a-4df7-9696-2a1695dcd9f7",
+    "pattern_description": "Problemas relacionados a atrasos na entrega de benefícios, como vale refeição, que requerem comunicação específica sobre datas de pagamento.",
+    "frequency": 4,
+    "first_detected": "2026-04-22T19:28:02.4211993Z",
+    "last_detected": "2026-04-22T19:34:24.705521Z",
     "example_symptoms": [
-      "O problema do cliente com o vale refei\u00E7\u00E3o n\u00E3o est\u00E1 listado como um problema conhecido. N\u00E3o possui um prazo de solu\u00E7\u00E3o cadastrado para este caso espec\u00EDfico."
+      "Não recebido vale refeição",
+      "Confusão sobre datas de pagamento",
+      "Cliente não recebeu o pagamento de vale-refeição",
+      "Cliente se queixa de atraso no pagamento de benefícios",
+      "Incerteza sobre a data do pagamento",
+      "cliente não recebeu pagamento",
+      "atraso em pagamentos",
+      "dúvidas sobre benefícios",
+      "cliente não recebeu vale refeição",
+      "benefícios atrasados",
+      "vales não creditados"
     ],
     "example_solutions": [
-      "Esse m\u00EAs ser\u00E1 pago no dia 25"
+      "Informar ao cliente que o pagamento será realizado no dia 25/04 e que deve aguardar até essa data para a confirmação do recebimento.",
+      "Informar ao cliente que o pagamento está previsto para uma data específica e que houve um atraso, garantindo que será regularizado.",
+      "Informar ao cliente que o pagamento será realizado na data específica, por exemplo: 'Seu vale-refeição será pago no dia 25/04.'",
+      "O vale-refeição e outros benefícios programados que você não recebeu serão pagos no dia 25 do mês corrente. Essa situação já é conhecida pela nossa equipe e está sendo tratada."
     ],
-    "confidence": 0.8500000000000001,
+    "confidence": 0.95,
+    "promoted_to_known_issue": true,
+    "temporal_characteristics": "Mensal",
+    "linked_known_issue": "Problemas relacionados a atrasos na entrega de benefícios, como vale refeição, que requerem comunicação específica sobre datas de pagamento."
+  },
+  {
+    "id": "946cb4db-823e-4d6c-a392-89f2450e251d",
+    "pattern_description": "O cliente não recebeu um benefício financeiro, como vale-refeição.",
+    "frequency": 1,
+    "first_detected": "2026-04-22T19:32:31.7259973Z",
+    "last_detected": "2026-04-22T19:32:31.7260356Z",
+    "example_symptoms": [
+      "Não recebimento do vale-refeição",
+      "Queixa sobre atraso no pagamento"
+    ],
+    "example_solutions": [
+      "Será pago no dia 25."
+    ],
+    "confidence": 95,
     "promoted_to_known_issue": false,
-    "temporal_characteristics": "Timing or delay aspect detected",
+    "temporal_characteristics": "Pagamento programado para o dia 25 do mês.",
     "linked_known_issue": null
   },
   {
-    "id": "b3785bbc-8054-4020-9730-fe88c41b97f5",
-    "pattern_description": "Clientes relatam n\u00E3o recebimento de benef\u00EDcios como vale refei\u00E7\u00E3o, indicando um problema recorrente na gest\u00E3o de pagamentos.",
+    "id": "9f420418-2c20-4a22-9b4e-da134ce0bf74",
+    "pattern_description": "Funcionários relatam que não receberam vale-refeição ou outros benefícios programados.",
     "frequency": 1,
-    "first_detected": "2026-04-22T18:21:01.8039967Z",
-    "last_detected": "2026-04-22T18:21:01.8039968Z",
+    "first_detected": "2026-04-22T19:33:17.4976896Z",
+    "last_detected": "2026-04-22T19:33:17.4977274Z",
     "example_symptoms": [
-      "Cliente n\u00E3o recebe o vale refei\u00E7\u00E3o no prazo",
-      "Incerteza sobre a data de pagamento"
+      "Cliente não recebeu vale-refeição no mês atual",
+      "Dúvidas sobre o prazo de pagamento do VR",
+      "Solicitação de verificaçāo do pagamento"
     ],
     "example_solutions": [
-      "Comunique-se com o cliente e informe a data estimada de pagamento do benef\u00EDcio."
+      "O VR será pago no dia 25 do mês corrente."
     ],
-    "confidence": 0.85,
-    "promoted_to_known_issue": false,
+    "confidence": 0.95,
+    "promoted_to_known_issue": true,
     "temporal_characteristics": "Mensal",
-    "linked_known_issue": null
+    "linked_known_issue": "Funcionários relatam que não receberam vale-refeição ou outros benefícios programados."
   }
 ]
