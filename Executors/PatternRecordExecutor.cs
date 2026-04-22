@@ -198,7 +198,7 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
             // Check if pattern should be promoted
             if (KnowledgeBasePersistence.KnownIssueWritesEnabled &&
                 (patternResult.ReadyForAutomation || (existingPatterns.FirstOrDefault(p => 
-                    ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription))?.Frequency >= 3 && 
+                    ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription))?.Frequency >= KnowledgeBasePersistence.PatternPromotionThreshold && 
                     patternResult.SuccessRate >= 0.75)))
             {
                 Logger.LogInfo($"Pattern '{patternResult.PatternDescription}' ready for promotion");

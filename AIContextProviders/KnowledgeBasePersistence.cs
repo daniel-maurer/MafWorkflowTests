@@ -16,8 +16,10 @@ public static class KnowledgeBasePersistence
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
     private static readonly bool EnableKnownIssueWrites = bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_KNOWN_ISSUE_WRITES"), out var enabled) && enabled;
+    private static readonly int PromotionThreshold = int.TryParse(Environment.GetEnvironmentVariable("PATTERN_PROMOTION_THRESHOLD"), out var threshold) ? threshold : 3;
 
     public static bool KnownIssueWritesEnabled => EnableKnownIssueWrites;
+    public static int PatternPromotionThreshold => PromotionThreshold;
 
     /// <summary>
     /// Reads all known issues from the knowledge base file.
@@ -124,9 +126,26 @@ public static class KnowledgeBasePersistence
             return;
         }
 
+        // Check if pattern frequency meets the threshold
+        if (pattern.Frequency < PromotionThreshold)
+        {
+            Logger.LogInfo($"Pattern frequency {pattern.Frequency} is below threshold {PromotionThreshold}; skipping promotion of pattern: {pattern.PatternDescription}");
+            return;
+        }
+
         try
         {
             var knownIssues = await ReadKnownIssuesAsync(cancellationToken);
+
+            // Check if a similar issue already exists
+            if (knownIssues.Any(ki => AreIssuesSimilar(ki.Problem, pattern.PatternDescription)))
+            {
+                Logger.LogInfo($"Similar known issue already exists; skipping promotion of pattern: {pattern.PatternDescription}");
+                // Still mark as promoted to avoid re-attempts
+                pattern.PromotedToKnownIssue = true;
+                pattern.LinkedKnownIssue = knownIssues.First(ki => AreIssuesSimilar(ki.Problem, pattern.PatternDescription)).Problem;
+                return;
+            }
 
             // Create a new known issue from the pattern
             var newIssue = new KnownIssue
@@ -135,28 +154,61 @@ public static class KnowledgeBasePersistence
                 Symptoms = pattern.ExampleSymptoms,
                 Keywords = ExtractKeywords(pattern),
                 Solution = pattern.ExampleSolutions.FirstOrDefault() ?? pattern.TemporalCharacteristics ?? string.Empty,
-                ActionRequired = true,
-                McpAction = "pattern_detected_action",
+                ActionRequired = false,
                 SuccessRate = pattern.Confidence
             };
 
-            // Check if this issue already exists
-            if (!knownIssues.Any(ki => ki.Problem.Equals(pattern.PatternDescription, StringComparison.OrdinalIgnoreCase)))
-            {
-                knownIssues.Add(newIssue);
-                await WriteKnownIssuesAsync(knownIssues, cancellationToken);
+            knownIssues.Add(newIssue);
+            await WriteKnownIssuesAsync(knownIssues, cancellationToken);
 
-                // Mark pattern as promoted
-                pattern.PromotedToKnownIssue = true;
-                pattern.LinkedKnownIssue = newIssue.Problem;
+            // Mark pattern as promoted
+            pattern.PromotedToKnownIssue = true;
+            pattern.LinkedKnownIssue = newIssue.Problem;
 
-                Logger.LogInfo($"Pattern promoted to known issue: {pattern.PatternDescription}");
-            }
+            Logger.LogInfo($"Pattern promoted to known issue: {pattern.PatternDescription}");
         }
         catch (Exception ex)
         {
             Logger.LogError($"Failed to promote pattern to known issue: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Checks if two issue descriptions are similar based on common keywords.
+    /// </summary>
+    private static bool AreIssuesSimilar(string desc1, string desc2)
+    {
+        if (string.IsNullOrEmpty(desc1) || string.IsNullOrEmpty(desc2))
+            return false;
+
+        // Normalize and split into words
+        var words1 = desc1.ToLowerInvariant()
+            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
+            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2) // Ignore short words
+            .ToHashSet();
+
+        var words2 = desc2.ToLowerInvariant()
+            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
+            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2)
+            .ToHashSet();
+
+        // Check for significant overlap
+        var intersection = words1.Intersect(words2).Count();
+        var union = words1.Union(words2).Count();
+
+        if (union == 0) return false;
+
+        var similarity = (double)intersection / union;
+
+        // Also check for key phrases
+        var keyPhrases = new[] { "vale refeicao", "nao recebimento", "beneficios", "pagamento", "atraso", "cliente" };
+        var hasCommonPhrase = keyPhrases.Any(phrase =>
+            desc1.ToLowerInvariant().Contains(phrase.Replace(" ", "")) &&
+            desc2.ToLowerInvariant().Contains(phrase.Replace(" ", "")));
+
+        return similarity >= 0.4 || hasCommonPhrase;
     }
 
     /// <summary>
