@@ -28,7 +28,7 @@ public class Program
             var workflow = WorkflowFactory.BuildWorkflow(chatClient);
 
             Console.WriteLine("Welcome to Support Workflow. Type your request below:");
-            await using StreamingRun handle = await InProcessExecution.StreamAsync(workflow, "Como posso ajudar?");
+            await using StreamingRun handle = await InProcessExecution.StreamAsync(workflow, "Bem vindo ao Support Workflow. Como posso ajudar? ");
             await foreach (WorkflowEvent evt in handle.WatchStreamAsync())
             {
                 // Only print WorkflowOutputEvent if it contains a ResolutionResult or similar final result

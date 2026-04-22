@@ -20,12 +20,6 @@ public sealed class FrequentProblemResult
     public string MessageForUser { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets whether the problem is too complex and requires human intervention.
-    /// </summary>
-    [JsonPropertyName("is_complex")]
-    public bool IsComplex { get; set; }
-
-    /// <summary>
     /// Gets or sets the matched known issue (if found).
     /// </summary>
     [JsonPropertyName("matched_issue")]

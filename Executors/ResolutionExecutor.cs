@@ -40,20 +40,20 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
         }
 
         Logger.LogInfo("Starting resolution process...");
-        Logger.LogDebug($"Problem - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
+        Logger.LogDebug($"Problem - IsKnown: {frequentProblemResult.IsKnown}");
         Logger.LogDebug($"Problem Details: {frequentProblemResult.MessageForUser}");
         
         var actionsExecuted = new List<string>();
 
-        // If problem is complex or not known, escalate to human
-        if (frequentProblemResult.IsComplex || !frequentProblemResult.IsKnown)
+        // If problem is not known, escalate to human
+        if (!frequentProblemResult.IsKnown)
         {
             var escalationResult = new ResolutionResult
             {
                 IsResolved = false,
                 RequiresHuman = true,
                 MessageForUser = "Este problema requer suporte humano. Um especialista entrará em contato em breve.",
-                EscalationReason = frequentProblemResult.IsComplex ? "Problem is too complex for automation" : "Problem is not recognized in our knowledge base",
+                EscalationReason = "Problem is not recognized in our knowledge base",
                 ActionsExecuted = actionsExecuted
             };
             
@@ -78,49 +78,94 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
 
         var toolsToCall = frequentProblemResult.RequiredTools ?? new List<string>();
         Logger.LogDebug($"Required tools: {string.Join(", ", toolsToCall)}");
-        
-        var agentInput = $@"Resolva o seguinte problema:
+
+        string userMessage;
+        if (toolsToCall.Count == 0)
+        {
+            // If there are no tools required, use the known issue solution directly.
+            userMessage = frequentProblemResult.MatchedIssue.Solution?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(userMessage))
+            {
+                userMessage = "Estamos trabalhando para resolver seu problema. Por favor, aguarde um momento.";
+            }
+
+            Logger.OutputAgent($"\n{userMessage}");
+            actionsExecuted.AddRange(toolsToCall);
+        }
+        else
+        {
+            var agentInput = $@"Resolva o seguinte problema:
 Problema: {frequentProblemResult.MatchedIssue?.Problem}
-Solução: {frequentProblemResult.MatchedIssue?.Solution}
+Solução conhecida: {frequentProblemResult.MatchedIssue?.Solution}
 Ferramentas disponíveis: {string.Join(", ", toolsToCall)}
 Detalhes do cliente: {frequentProblemResult.MessageForUser}
 
-Use as ferramentas necessárias para resolver o problema:
-- UnlockAccount: Desbloquear a conta do usuário
-- SendEmail: Enviar email de reset de senha
+Responda ao usuário usando a solução conhecida de forma direta e clara. Se as ferramentas estiverem disponíveis, mencione apenas as ações executadas.
+Use no máximo uma frase direta ao cliente, sem dizer que não é possível resolver.";
 
-Explique o que fez para resolver o problema.";
-
-        try
-        {
-            Logger.LogInfo("Calling ResolutionAgent...");
-            var response = await this._resolutionAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
-            
-            Logger.LogInfo("Agent response received");
-            Logger.LogDebug($"Agent Response: {response.Text}");
-            
-            // Parse the JSON response to extract the user message
-            string userMessage = response.Text;
             try
             {
-                var agentResponse = JsonSerializer.Deserialize<JsonElement>(response.Text);
-                if (agentResponse.TryGetProperty("message_for_user", out var messageElement))
+                Logger.LogInfo("Calling ResolutionAgent...");
+                var response = await this._resolutionAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
+                
+                Logger.LogInfo("Agent response received");
+                Logger.LogDebug($"Agent Response: {response.Text}");
+                
+                // Parse the JSON response to extract the user message
+                userMessage = response.Text;
+                try
                 {
-                    userMessage = messageElement.GetString() ?? response.Text;
+                    var agentResponse = JsonSerializer.Deserialize<JsonElement>(response.Text);
+                    if (agentResponse.TryGetProperty("message_for_user", out var messageElement))
+                    {
+                        userMessage = messageElement.GetString() ?? response.Text;
+                    }
                 }
+                catch
+                {
+                    // If parsing fails, use the full response
+                    Logger.LogDebug("Failed to parse agent response as JSON, using full response");
+                }
+                
+                Logger.OutputAgent($"\n{userMessage}");
+
+                // Record which tools were meant to be called
+                actionsExecuted.AddRange(toolsToCall);
             }
-            catch
+            catch (OperationCanceledException)
             {
-                // If parsing fails, use the full response
-                Logger.LogDebug("Failed to parse agent response as JSON, using full response");
+                Logger.LogError("Resolution process was cancelled");
+                var cancelledResult = new ResolutionResult
+                {
+                    IsResolved = false,
+                    RequiresHuman = true,
+                    MessageForUser = "Resolution process was cancelled. Please try again.",
+                    ActionsExecuted = actionsExecuted,
+                    EscalationReason = "Process was cancelled by user"
+                };
+                await context.YieldOutputAsync(cancelledResult, cancellationToken);
+                return cancelledResult;
             }
-            
-            Logger.OutputUser($"\n{userMessage}");
-            
-            // Record which tools were meant to be called
-            actionsExecuted.AddRange(toolsToCall);
-            
-            // Ask user for confirmation
+            catch (Exception ex)
+            {
+                Logger.LogError($"Exception occurred: {ex.GetType().Name}");
+                Logger.LogError($"Message: {ex.Message}");
+                Logger.LogDebug($"Stack Trace: {ex.StackTrace}");
+                
+                var errorResult = new ResolutionResult
+                {
+                    IsResolved = false,
+                    RequiresHuman = true,
+                    MessageForUser = $"Ocorreu um erro durante a resolução. Um especialista será contatado para ajudar.",
+                    ActionsExecuted = actionsExecuted,
+                    EscalationReason = $"Error during resolution: {ex.GetType().Name}"
+                };
+                await context.YieldOutputAsync(errorResult, cancellationToken);
+                throw;
+            }
+        }
+        
+        // Ask user for confirmation
             string userConfirmation = _consoleInteractor.GetUserResponse("\n✓ Seu problema foi resolvido? (sim/não)");
             bool resolved = userConfirmation.ToLower() is "sim" or "s" or "yes" or "y";
             
@@ -137,36 +182,4 @@ Explique o que fez para resolver o problema.";
             Logger.LogInfo("Resolution process completed successfully");
             return resolutionOutcome;
         }
-        catch (OperationCanceledException)
-        {
-            Logger.LogError("Resolution process was cancelled");
-            var cancelledResult = new ResolutionResult
-            {
-                IsResolved = false,
-                RequiresHuman = true,
-                MessageForUser = "Resolution process was cancelled. Please try again.",
-                ActionsExecuted = actionsExecuted,
-                EscalationReason = "Process was cancelled by user"
-            };
-            await context.YieldOutputAsync(cancelledResult, cancellationToken);
-            return cancelledResult;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError($"Exception occurred: {ex.GetType().Name}");
-            Logger.LogError($"Message: {ex.Message}");
-            Logger.LogDebug($"Stack Trace: {ex.StackTrace}");
-            
-            var errorResult = new ResolutionResult
-            {
-                IsResolved = false,
-                RequiresHuman = true,
-                MessageForUser = $"Ocorreu um erro durante a resolução. Um especialista será contatado para ajudar.",
-                ActionsExecuted = actionsExecuted,
-                EscalationReason = $"Error during resolution: {ex.GetType().Name}"
-            };
-            await context.YieldOutputAsync(errorResult, cancellationToken);
-            throw;
-        }
     }
-}

@@ -57,7 +57,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
                 isUnderstood = true;
                 
                 Logger.LogInfo("Triage analysis complete - problem understood");
-                Logger.LogDebug($"Problem summary: {detectionResult.Summary}");
+                Logger.LogExecutorResult($"[Triagem] Resumo do Problema: {detectionResult.Summary}");
 
                 await context.YieldOutputAsync(detectionResult.Summary, cancellationToken);
 

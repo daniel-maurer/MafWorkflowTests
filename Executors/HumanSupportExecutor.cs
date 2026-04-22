@@ -45,11 +45,11 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         }
 
         Logger.LogInfo("Starting human support handling for complex/unknown issue");
-        Logger.OutputUser("\n" + new string('=', 80));
-        Logger.OutputUser("[ATENDENTE SUPORTE] Agora você controla o atendimento humano via terminal.");
-        Logger.OutputUser("[ATENDENTE SUPORTE] Digite a fala do atendente humano e a fala do usuário em sequência.");
-        Logger.OutputUser("[ATENDENTE SUPORTE] Para encerrar o atendimento humano a qualquer momento, digite [COMPLETED] ou FINALIZAR.");
-        Logger.OutputUser(new string('=', 80));
+        Logger.OutputSystem("\n" + new string('=', 80));
+        Logger.OutputSystem("[ATENDENTE SUPORTE] Agora você controla o atendimento humano via terminal.");
+        Logger.OutputSystem("[ATENDENTE SUPORTE] Digite a fala do atendente humano e a fala do usuário em sequência.");
+        Logger.OutputSystem("[ATENDENTE SUPORTE] Para encerrar o atendimento humano a qualquer momento, digite [COMPLETED] ou FINALIZAR.");
+        Logger.OutputSystem(new string('=', 80));
 
         string humanAgentResponse = _consoleInteractor.GetUserResponse("[ATENDENTE HUMANO] ");
         if (TryCompleteCommand(humanAgentResponse, out var completionResult))
@@ -57,7 +57,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
             await context.YieldOutputAsync(completionResult, cancellationToken);
             return completionResult;
         }
-        Logger.OutputUser($"[ATENDENTE HUMANO] {humanAgentResponse}");
+        Logger.OutputAgent($"[ATENDENTE HUMANO] {humanAgentResponse}");
         Logger.LogDebug($"Human agent said: {humanAgentResponse}");
 
         string userReply = _consoleInteractor.GetUserResponse("[USUÁRIO] ");
@@ -78,9 +78,9 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
 
         bool isResolved = confirmation.Trim().ToLowerInvariant() is "ok" or "obrigado" or "tá bom" or "valeu" or "sim" or "s" or "yes" or "ok, obrigado" or "muito obrigado" or "resolvido";
 
-        Logger.OutputUser(new string('=', 80));
-        Logger.OutputUser("[SISTEMA] Finalizando atendimento com suporte humano");
-        Logger.OutputUser(new string('=', 80) + "\n");
+        Logger.OutputSystem(new string('=', 80));
+        Logger.OutputSystem("[SISTEMA] Finalizando atendimento com suporte humano");
+        Logger.OutputSystem(new string('=', 80) + "\n");
         Logger.LogInfo($"Human support interaction completed - Issue resolved: {isResolved}");
 
         // Pattern recording is handled later by the PatternRecordExecutor.

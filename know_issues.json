@@ -33,5 +33,53 @@
     "gravado_por_agente": false,
     "data_gravacao": null,
     "agente_versao": null
+  },
+  {
+    "problema": "Os clientes relatam não ter recebido seus vales-refeição devido a atrasos de pagamento que muitas vezes são resolvidos com informações sobre prazos específicos.",
+    "sintomas": [
+      "Cliente não recebeu vale-refeição",
+      "Atraso no pagamento de benefícios",
+      "Incerteza sobre o dia de pagamento",
+      "Não recebimento do vale-refeição",
+      "Confusão quanto ao horário do pagamento",
+      "Solicitação de confirmação de pagamento",
+      "Cliente não recebeu pagamento",
+      "Cliente relata lentidão no processamento",
+      "Dificuldade em confirmar recebimento do pagamento"
+    ],
+    "keywords": [
+      "cliente",
+      "recebeu",
+      "vale",
+      "refeição",
+      "atraso",
+      "pagamento",
+      "benefícios",
+      "incerteza",
+      "sobre",
+      "recebimento",
+      "confusão",
+      "quanto",
+      "horário",
+      "solicitação",
+      "confirmação",
+      "relata",
+      "lentidão",
+      "processamento",
+      "dificuldade",
+      "confirmar",
+      "mensalmente,",
+      "frequência",
+      "final"
+    ],
+    "solucao": "O vale-refeição será pago no dia 25/04.",
+    "requer_acao": false,
+    "acao_mcp": "",
+    "taxa_sucesso": 95,
+    "prazo_resolucao": "00:00:00",
+    "tools_required": [],
+    "gravado_por_agente": false,
+    "data_gravacao": null,
+    "agente_versao": null
   }
 ]

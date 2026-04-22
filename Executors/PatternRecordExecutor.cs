@@ -273,20 +273,20 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
     /// </summary>
     private void DisplayPatternInfo(PatternRecordResult pattern)
     {
-        Logger.OutputUser("\n" + new string('=', 80));
-        Logger.OutputUser("[SISTEMA] Análise de Padrão Completada");
-        Logger.OutputUser(new string('=', 80));
-        Logger.OutputUser($"Tipo de Padrão: {pattern.PatternType}");
-        Logger.OutputUser($"Descrição: {pattern.PatternDescription}");
+        Logger.OutputSystem("\n" + new string('=', 80));
+        Logger.OutputSystem("[SISTEMA] Análise de Padrão Completada");
+        Logger.OutputSystem(new string('=', 80));
+        Logger.OutputSystem($"Tipo de Padrão: {pattern.PatternType}");
+        Logger.OutputSystem($"Descrição: {pattern.PatternDescription}");
 
         if (!string.IsNullOrEmpty(pattern.TemporalInfo))
         {
-            Logger.OutputUser($"Característica Temporal: {pattern.TemporalInfo}");
+            Logger.OutputSystem($"Característica Temporal: {pattern.TemporalInfo}");
         }
 
-        Logger.OutputUser($"Taxa de Sucesso: {pattern.SuccessRate:P}");
-        Logger.OutputUser($"Pronto para Automação: {(pattern.ReadyForAutomation ? "✓ Sim" : "✗ Não")}");
-        Logger.OutputUser(new string('=', 80) + "\n");
+        Logger.OutputSystem($"Taxa de Sucesso: {pattern.SuccessRate:P}");
+        Logger.OutputSystem($"Pronto para Automação: {(pattern.ReadyForAutomation ? "✓ Sim" : "✗ Não")}");
+        Logger.OutputSystem(new string('=', 80) + "\n");
     }
 
     /// <summary>

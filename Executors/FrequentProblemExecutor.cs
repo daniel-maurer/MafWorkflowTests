@@ -58,11 +58,11 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                 throw new InvalidOperationException("Failed to deserialize FrequentProblemResult from agent response.");
             }
             
-            Logger.LogDebug($"Frequent Problem Analysis Result - IsKnown: {frequentProblemResult.IsKnown}, IsComplex: {frequentProblemResult.IsComplex}");
+            Logger.LogDebug($"Frequent Problem Analysis Result - IsKnown: {frequentProblemResult.IsKnown}");
             
             // Always return the result - let the workflow routing decide what to do next
             // If it's known and not complex, route to resolution; otherwise route to human support
-            if (frequentProblemResult.IsKnown && !frequentProblemResult.IsComplex)
+            if (frequentProblemResult.IsKnown)
             {
                 // If known, try to load the full issue details from the knowledge base
                 if (string.IsNullOrEmpty(frequentProblemResult.MessageForUser) == false)
@@ -76,14 +76,14 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                         frequentProblemResult.RequiredTools = matchedIssues[0].ToolsRequired ?? new List<string>();
                         frequentProblemResult.SuccessRate = matchedIssues[0].SuccessRate;
                         
-                        Logger.LogInfo($"Matched issue: {matchedIssues[0].Problem}");
+                        Logger.LogExecutorResult($"[Problemas Frequentes] Problema conhecido: {matchedIssues[0].Problem}");
                         Logger.LogDebug($"Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
                     }
                     else
                     {
-                        Logger.LogInfo("No known issue match found; routing to human support.");
+                        Logger.LogExecutorResult("[Problemas Frequentes] Nenhuma issue conhecida corresponde ao problema identificado. Encaminhando para suporte humano.");
+
                         frequentProblemResult.IsKnown = false;
-                        frequentProblemResult.IsComplex = true;
                         frequentProblemResult.MessageForUser = "Problema não corresponde a uma issue conhecida. Encaminhando para suporte humano.";
                         frequentProblemResult.RequiredTools = new List<string>();
                         frequentProblemResult.SuccessRate = 0;
@@ -105,7 +105,6 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
             var errorResult = new FrequentProblemResult
             {
                 IsKnown = false,
-                IsComplex = true,
                 MessageForUser = "Ocorreu um erro durante a análise do problema. Por favor, tente novamente ou contacte o suporte."
             };
             await context.YieldOutputAsync(errorResult, cancellationToken);

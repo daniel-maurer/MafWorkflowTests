@@ -7,6 +7,17 @@ namespace SupportWorkflow;
 /// </summary>
 public static class Logger
 {
+    private const string AnsiReset = "\u001b[0m";
+    private const string AnsiBlue = "\u001b[34m";
+    private const string AnsiGreen = "\u001b[32m";
+    private const string AnsiOrange = "\u001b[38;5;214m";
+    private const string AnsiGrey = "\u001b[38;5;244m";
+
+    private static void WriteColored(string message, string color)
+    {
+        Console.WriteLine($"{color}{message}{AnsiReset}");
+    }
+
     /// <summary>
     /// Gets or sets whether logging is enabled.
     /// Set to false to disable all logs.
@@ -23,6 +34,12 @@ public static class Logger
         {
             Console.WriteLine($"[LOG] {message}");
         }
+    }
+
+    public static void LogExecutorResult(string message)
+    {
+
+        WriteColored(message, AnsiBlue);
     }
 
     /// <summary>
@@ -56,7 +73,26 @@ public static class Logger
     /// <param name="message">The user message to display</param>
     public static void OutputUser(string message)
     {
-        Console.WriteLine(message);
+        WriteColored(message, AnsiOrange);
+    }
+
+    /// <summary>
+    /// Outputs a system/automatic message in blue.
+    /// </summary>
+    public static void OutputSystem(string message)
+    {
+        if (EnableLogging)
+        {
+            WriteColored(message, AnsiGrey);
+        }
+    }
+
+    /// <summary>
+    /// Outputs an agent or AI message in green.
+    /// </summary>
+    public static void OutputAgent(string message)
+    {
+        WriteColored(message, AnsiGreen);
     }
 
     /// <summary>

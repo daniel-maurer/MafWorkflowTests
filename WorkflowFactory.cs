@@ -67,11 +67,11 @@ public static class WorkflowFactory
     /// Creates a condition that checks if a problem is known and not complex.
     /// </summary>
     private static Func<object?, bool> GetKnownProblemCondition() =>
-        result => result is FrequentProblemResult fpResult && fpResult.IsKnown && !fpResult.IsComplex;
+        result => result is FrequentProblemResult fpResult && fpResult.IsKnown;
 
     /// <summary>
     /// Creates a condition that checks if a problem is unknown or complex.
     /// </summary>
     private static Func<object?, bool> GetComplexProblemCondition() =>
-        result => result is FrequentProblemResult fpResult && (!fpResult.IsKnown || fpResult.IsComplex);
+        result => result is FrequentProblemResult fpResult && (!fpResult.IsKnown);
 }
