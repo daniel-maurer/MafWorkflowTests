@@ -11,7 +11,7 @@ namespace SupportWorkflow;
 internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentProblemResult>
 {
     private readonly AIAgent _frequentProblemAgent;
-    private readonly ConsoleInteractor _consoleInteractor;
+    private readonly IUserInteractor _userInteractor;
     private readonly string _knownIssuesPath;
 
     /// <summary>
@@ -20,10 +20,10 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
     /// <param name="frequentProblemAgent">The agent for detecting frequent/known problems</param>
     /// <param name="consoleInteractor">The console interactor for user communication</param>
     /// <param name="knownIssuesPath">Optional path to the known issues file</param>
-    public FrequentProblemExecutor(AIAgent frequentProblemAgent, ConsoleInteractor consoleInteractor, string knownIssuesPath = "know_issues.json") : base("FrequentProblemExecutor")
+    public FrequentProblemExecutor(AIAgent frequentProblemAgent, IUserInteractor userInteractor, string knownIssuesPath = "know_issues.json") : base("FrequentProblemExecutor")
     {
         this._frequentProblemAgent = frequentProblemAgent ?? throw new ArgumentNullException(nameof(frequentProblemAgent));
-        this._consoleInteractor = consoleInteractor ?? throw new ArgumentNullException(nameof(consoleInteractor));
+        this._userInteractor = userInteractor ?? throw new ArgumentNullException(nameof(userInteractor));
         _knownIssuesPath = knownIssuesPath;
     }
 

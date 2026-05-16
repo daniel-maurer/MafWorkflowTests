@@ -19,6 +19,7 @@
     <PackageReference Include="Microsoft.Agents.AI.Workflows.Declarative" Version="1.0.0-preview.251107.1" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="9.10.2" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.10.2-preview.1.25552.1" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

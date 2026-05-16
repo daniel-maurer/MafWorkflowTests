@@ -10,7 +10,7 @@ namespace SupportWorkflow;
 /// </summary>
 internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, ResolutionResult>
 {
-    private readonly ConsoleInteractor _consoleInteractor;
+    private readonly IUserInteractor _userInteractor;
     private static readonly HashSet<string> CompletionCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "[COMPLETED]",
@@ -25,9 +25,9 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
     /// Initializes a new instance of the HumanSupportExecutor.
     /// </summary>
     /// <param name="consoleInteractor">The console interactor for user communication</param>
-    public HumanSupportExecutor(ConsoleInteractor consoleInteractor) : base("HumanSupportExecutor")
+    public HumanSupportExecutor(IUserInteractor userInteractor) : base("HumanSupportExecutor")
     {
-        this._consoleInteractor = consoleInteractor ?? throw new ArgumentNullException(nameof(consoleInteractor));
+        this._userInteractor = userInteractor ?? throw new ArgumentNullException(nameof(userInteractor));
     }
 
     /// <summary>
@@ -51,7 +51,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         Logger.OutputSystem("[ATENDENTE SUPORTE] Para encerrar o atendimento humano a qualquer momento, digite [COMPLETED] ou FINALIZAR.");
         Logger.OutputSystem(new string('=', 80));
 
-        string humanAgentResponse = _consoleInteractor.GetUserResponse("[ATENDENTE HUMANO] ");
+        string humanAgentResponse = await _userInteractor.GetUserResponseAsync("[ATENDENTE HUMANO] ", cancellationToken);
         if (TryCompleteCommand(humanAgentResponse, out var completionResult))
         {
             await context.YieldOutputAsync(completionResult, cancellationToken);
@@ -60,7 +60,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         Logger.OutputAgent($"[ATENDENTE HUMANO] {humanAgentResponse}");
         Logger.LogDebug($"Human agent said: {humanAgentResponse}");
 
-        string userReply = _consoleInteractor.GetUserResponse("[USUÁRIO] ");
+        string userReply = await _userInteractor.GetUserResponseAsync("[USUÁRIO] ", cancellationToken);
         if (TryCompleteCommand(userReply, out completionResult))
         {
             await context.YieldOutputAsync(completionResult, cancellationToken);
@@ -72,7 +72,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         // Considera a última resposta do atendente como final
         string finalHumanResponse = humanAgentResponse;
 
-        string confirmation = _consoleInteractor.GetUserResponse("[USUÁRIO] (sim/não) ");
+        string confirmation = await _userInteractor.GetUserResponseAsync("[USUÁRIO] (sim/não) ", cancellationToken);
         Logger.OutputUser($"[USUÁRIO] {confirmation}\n");
         Logger.LogDebug($"User confirmation: {confirmation}");
 

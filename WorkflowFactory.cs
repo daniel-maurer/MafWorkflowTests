@@ -20,32 +20,35 @@ public static class WorkflowFactory
     /// <param name="chatClient">The chat client to use for all agents</param>
     /// <returns>A configured workflow instance</returns>
     /// <throws>ArgumentNullException if chatClient is null</throws>
-    internal static Workflow BuildWorkflow(IChatClient chatClient)
+    internal static Workflow BuildWorkflow(IChatClient chatClient, IUserInteractor userInteractor)
     {
         if (chatClient == null)
         {
             throw new ArgumentNullException(nameof(chatClient), "Chat client cannot be null");
         }
+        if (userInteractor == null)
+        {
+            throw new ArgumentNullException(nameof(userInteractor), "User interactor cannot be null");
+        }
 
         RequestPort userMessageRequestPort = RequestPort.Create<string, string>("UserMessage");
-        var consoleInteractor = new ConsoleInteractor();
 
         // Create all agents
         AIAgent triageAgent = TriageAgentFactory.GetTriageAgent(chatClient);
-        var triageExecutor = new TriageExecutor(triageAgent, consoleInteractor);
+        var triageExecutor = new TriageExecutor(triageAgent, userInteractor);
 
         AIAgent frequentProblemAgent = FrequentProblemAgentFactory.GetFrequentProblemAgent(chatClient);
-        var frequentProblemExecutor = new FrequentProblemExecutor(frequentProblemAgent, consoleInteractor);
+        var frequentProblemExecutor = new FrequentProblemExecutor(frequentProblemAgent, userInteractor);
 
         AIAgent resolutionAgent = ResolutionAgentFactory.GetResolutionAgent(chatClient);
-        var resolutionExecutor = new ResolutionExecutor(resolutionAgent, consoleInteractor);
+        var resolutionExecutor = new ResolutionExecutor(resolutionAgent, userInteractor);
         
         // Human support executor for complex or unknown issues
-        var humanSupportExecutor = new HumanSupportExecutor(consoleInteractor);
+        var humanSupportExecutor = new HumanSupportExecutor(userInteractor);
 
         // Pattern record agent for learning and knowledge base updates
         AIAgent patternRecordAgent = PatternRecordAgentFactory.GetPatternRecordAgent(chatClient);
-        var patternRecordExecutor = new PatternRecordExecutor(patternRecordAgent, consoleInteractor);
+        var patternRecordExecutor = new PatternRecordExecutor(patternRecordAgent, userInteractor);
 
         // Build workflow with conditional edges
         return new WorkflowBuilder(userMessageRequestPort)

@@ -12,17 +12,17 @@ namespace SupportWorkflow;
 internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, ResolutionResult>
 {
     private readonly AIAgent _resolutionAgent;
-    private readonly ConsoleInteractor _consoleInteractor;
+    private readonly IUserInteractor _userInteractor;
 
     /// <summary>
     /// Initializes a new instance of the ResolutionExecutor.
     /// </summary>
     /// <param name="resolutionAgent">The agent for attempting issue resolution</param>
     /// <param name="consoleInteractor">The console interactor for user communication</param>
-    public ResolutionExecutor(AIAgent resolutionAgent, ConsoleInteractor consoleInteractor) : base("ResolutionExecutor")
+    public ResolutionExecutor(AIAgent resolutionAgent, IUserInteractor userInteractor) : base("ResolutionExecutor")
     {
         this._resolutionAgent = resolutionAgent ?? throw new ArgumentNullException(nameof(resolutionAgent));
-        this._consoleInteractor = consoleInteractor ?? throw new ArgumentNullException(nameof(consoleInteractor));
+        this._userInteractor = userInteractor ?? throw new ArgumentNullException(nameof(userInteractor));
     }
 
     /// <summary>
@@ -126,7 +126,8 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
                     // If parsing fails, use the full response
                     Logger.LogDebug("Failed to parse agent response as JSON, using full response");
                 }
-                
+                await context.YieldOutputAsync(userMessage, cancellationToken);
+
                 Logger.OutputAgent($"\n{userMessage}");
 
                 // Record which tools were meant to be called
@@ -166,7 +167,7 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
         }
         
         // Ask user for confirmation
-            string userConfirmation = _consoleInteractor.GetUserResponse("\n✓ Seu problema foi resolvido? (sim/não)");
+            string userConfirmation = await _userInteractor.GetUserResponseAsync("\n✓ Seu problema foi resolvido? (sim/não)", cancellationToken);
             bool resolved = userConfirmation.ToLower() is "sim" or "s" or "yes" or "y";
             
             var resolutionOutcome = new ResolutionResult

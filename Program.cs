@@ -3,6 +3,8 @@ using Azure.Identity;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Azure.AI.OpenAI;
+using Microsoft.AspNetCore.SignalR.Client;
+using System.Threading.Tasks;
 
 namespace SupportWorkflow;
 public class Program
@@ -25,42 +27,10 @@ public class Program
             var chatClient = new AzureOpenAIClient(endpoint, new AzureCliCredential())
                 .GetChatClient(deploymentName).AsIChatClient();
             
-            var workflow = WorkflowFactory.BuildWorkflow(chatClient);
-
-            Console.WriteLine("Welcome to Support Workflow. Type your request below:");
-            await using StreamingRun handle = await InProcessExecution.StreamAsync(workflow, "Bem vindo ao Support Workflow. Como posso ajudar? ");
-            await foreach (WorkflowEvent evt in handle.WatchStreamAsync())
-            {
-                // Only print WorkflowOutputEvent if it contains a ResolutionResult or similar final result
-                // Skip intermediate messages to avoid duplication
-                if (evt is WorkflowOutputEvent outputEvent)
-                {
-                    var eventData = outputEvent.Data;
-                    // Only print if this is a final result (ResolutionResult or HumanSupportResult)
-                    // Skip intermediate JSON responses and intermediate outputs
-                    if (eventData is ResolutionResult or FrequentProblemResult or TriageResult)
-                    {
-                        // These are already handled by the executors with Logger.OutputUser
-                        continue;
-                    }
-                }
-                
-                switch (evt)
-                {
-                    case RequestInfoEvent requestInputEvt:
-                        ExternalResponse response = HandleExternalRequest(requestInputEvt.Request);
-                        await handle.SendResponseAsync(response);
-                        continue;
-                    case ExecutorCompletedEvent executorComplete:
-                        //Console.WriteLine($"{executorComplete.ExecutorId}: {executorComplete.Data}");
-                        break;
-                    case WorkflowOutputEvent workflowOutput:
-                        //Console.WriteLine($"Workflow '{workflowOutput.SourceId}' outputs: {workflowOutput.Data}");
-                        break;
-                }
-            }
-            
-            Console.WriteLine("Thank you for using Support Workflow.");
+            var bffClient = new BffWorkflowClient(configuration, chatClient, interactor => WorkflowFactory.BuildWorkflow(chatClient, interactor));
+            await bffClient.StartAsync();
+            Console.WriteLine($"Connected to BFF at {configuration.BffBaseUrl}");
+            await Task.Delay(Timeout.Infinite);
         }
         catch (InvalidOperationException ex)
         {

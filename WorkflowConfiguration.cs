@@ -9,6 +9,8 @@ public class WorkflowConfiguration
     public string AzureOpenAiEndpoint { get; set; } = string.Empty;
     public string AzureOpenAiDeploymentName { get; set; } = string.Empty;
     public string KnownIssuesPath { get; set; } = string.Empty;
+    public string BffBaseUrl { get; set; } = string.Empty;
+    public string WorkerId { get; set; } = string.Empty;
 
     /// <summary>
     /// Loads configuration from environment variables.
@@ -23,12 +25,14 @@ public class WorkflowConfiguration
             throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT environment variable is not set.");
         }
 
-        return new()
-        {
-            AzureOpenAiEndpoint = endpoint,
-            AzureOpenAiDeploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-4o-mini",
-            KnownIssuesPath = Environment.GetEnvironmentVariable("KNOWN_ISSUES_PATH") ?? "know_issues.json"
-        };
+            return new()
+            {
+                AzureOpenAiEndpoint = endpoint,
+                AzureOpenAiDeploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-4o-mini",
+                KnownIssuesPath = Environment.GetEnvironmentVariable("KNOWN_ISSUES_PATH") ?? "know_issues.json",
+                BffBaseUrl = Environment.GetEnvironmentVariable("BFF_BASE_URL") ?? Environment.GetEnvironmentVariable("WORKFLOW_BFF_BASE_URL") ?? "http://localhost:5089/hubs/maf",
+                WorkerId = Environment.GetEnvironmentVariable("WORKFLOW_WORKER_ID") ?? "maf-worker-local-01"
+            };
     }
 
     /// <summary>
@@ -45,6 +49,11 @@ public class WorkflowConfiguration
         if (!Uri.TryCreate(AzureOpenAiEndpoint, UriKind.Absolute, out _))
         {
             throw new InvalidOperationException($"AzureOpenAiEndpoint '{AzureOpenAiEndpoint}' is not a valid URI.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(BffBaseUrl) && !Uri.TryCreate(BffBaseUrl, UriKind.Absolute, out _))
+        {
+            throw new InvalidOperationException($"BffBaseUrl '{BffBaseUrl}' is not a valid URI.");
         }
     }
 }

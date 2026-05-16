@@ -2,9 +2,9 @@
   {
     "id": "d59ff19b-5399-4180-977c-a21bb4cdcae7",
     "pattern_description": "Os clientes relatam não ter recebido seus vales-refeição devido a atrasos de pagamento que muitas vezes são resolvidos com informações sobre prazos específicos.",
-    "frequency": 9,
+    "frequency": 10,
     "first_detected": "2026-04-22T19:52:41.4841592Z",
-    "last_detected": "2026-04-22T20:56:22.3848282Z",
+    "last_detected": "2026-05-16T19:03:40.0752766Z",
     "example_symptoms": [
       "Cliente não recebeu vale-refeição",
       "Atraso no pagamento de benefícios",
@@ -30,7 +30,10 @@
       "Questionamentos sobre a data de pagamento do vale-refeição",
       "Solicitações para confirmar recebimento do vale-refeição",
       "Reclamação sobre atraso no pagamento",
-      "Confirmação de que o pagamento está previsto"
+      "Confirmação de que o pagamento está previsto",
+      "Cliente não recebeu o pagamento",
+      "Cliente contata suporte para esclarecimentos",
+      "Incerteza sobre a data de recebimento"
     ],
     "example_solutions": [
       "O vale-refeição será pago no dia 25/04.",
@@ -39,7 +42,8 @@
       "Seu vale-refeição será pago no dia 25/04. Caso precise de mais alguma informação, estou à disposição!",
       "Informo que o vale-refeição será pago no dia 25/04.",
       "O pagamento do vale-refeição será efetuado no dia 25/04. Para mais assistência, um agente humano pode ajudar.",
-      "O vale-refeição será pago no dia 25/04, conforme programação."
+      "O vale-refeição será pago no dia 25/04, conforme programação.",
+      "Informar ao cliente que o vale-refeição será pago no dia 25/04."
     ],
     "confidence": 95,
     "promoted_to_known_issue": true,

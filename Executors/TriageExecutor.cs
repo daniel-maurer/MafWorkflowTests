@@ -12,17 +12,17 @@ namespace SupportWorkflow;
 internal sealed class TriageExecutor : Executor<string, TriageResult>
 {
     private readonly AIAgent _triageAgent;
-    private readonly ConsoleInteractor _consoleInteractor;
+    private readonly IUserInteractor _userInteractor;
 
     /// <summary>
     /// Initializes a new instance of the TriageExecutor.
     /// </summary>
     /// <param name="triageAgent">The triage agent to use for analysis</param>
     /// <param name="consoleInteractor">The console interactor for user communication</param>
-    public TriageExecutor(AIAgent triageAgent, ConsoleInteractor consoleInteractor) : base("TriageExecutor")
+    public TriageExecutor(AIAgent triageAgent, IUserInteractor userInteractor) : base("TriageExecutor")
     {
         this._triageAgent = triageAgent ?? throw new ArgumentNullException(nameof(triageAgent));
-        this._consoleInteractor = consoleInteractor ?? throw new ArgumentNullException(nameof(consoleInteractor));
+        this._userInteractor = userInteractor ?? throw new ArgumentNullException(nameof(userInteractor));
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
                 {
                     Logger.LogDebug("Need more information - asking follow-up question");
                     history.Add(new ChatMessage(ChatRole.Assistant, detectionResult.QuestionForUser));
-                    string nextUserMessage = _consoleInteractor.GetUserResponse(detectionResult.QuestionForUser);
+                    string nextUserMessage = await _userInteractor.GetUserResponseAsync(detectionResult.QuestionForUser, cancellationToken);
                     history.Add(new ChatMessage(ChatRole.User, nextUserMessage));
                     await context.QueueStateUpdateAsync(Constants.ConversationHistoryKey, history, Constants.TriageStateScope);
                 }

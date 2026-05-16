@@ -55,6 +55,18 @@ public static class Logger
     }
 
     /// <summary>
+    /// Logs a warning message with [LOG WARNING] prefix.
+    /// </summary>
+    /// <param name="message">The warning message to log</param>
+    public static void LogWarning(string message)
+    {
+        if (EnableLogging)
+        {
+            Console.WriteLine($"[LOG WARNING] {message}");
+        }
+    }
+
+    /// <summary>
     /// Logs a debug message with [LOG DEBUG] prefix.
     /// </summary>
     /// <param name="message">The debug message to log</param>

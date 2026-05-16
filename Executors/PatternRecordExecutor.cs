@@ -12,17 +12,17 @@ namespace SupportWorkflow;
 internal sealed class PatternRecordExecutor : Executor<ResolutionResult, PatternRecordResult>
 {
     private readonly AIAgent _patternRecordAgent;
-    private readonly ConsoleInteractor _consoleInteractor;
+    private readonly IUserInteractor _userInteractor;
 
     /// <summary>
     /// Initializes a new instance of the PatternRecordExecutor.
     /// </summary>
     /// <param name="patternRecordAgent">The pattern record agent for analysis</param>
     /// <param name="consoleInteractor">The console interactor for user communication</param>
-    public PatternRecordExecutor(AIAgent patternRecordAgent, ConsoleInteractor consoleInteractor) : base("PatternRecordExecutor")
+    public PatternRecordExecutor(AIAgent patternRecordAgent, IUserInteractor userInteractor) : base("PatternRecordExecutor")
     {
         this._patternRecordAgent = patternRecordAgent ?? throw new ArgumentNullException(nameof(patternRecordAgent));
-        this._consoleInteractor = consoleInteractor ?? throw new ArgumentNullException(nameof(consoleInteractor));
+        this._userInteractor = userInteractor ?? throw new ArgumentNullException(nameof(userInteractor));
     }
 
     /// <summary>
