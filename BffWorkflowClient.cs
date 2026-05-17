@@ -35,7 +35,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         await _connection.StartAsync(cancellationToken);
         await _connection.InvokeAsync("RegisterWorker", _configuration.WorkerId, new[] { "support", "incident-triage" }, cancellationToken);
-        await PublishTraceAsync(string.Empty, "MAF worker connected to BFF.", "info");
+        await PublishTraceAsync(string.Empty, "MAF worker connected to BFF.", TraceConstants.IconTerminal, TraceConstants.ColorPrimary);
     }
 
     private void ConfigureHandlers()
@@ -123,7 +123,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await PublishMessageAsync(command.SessionId, CreateUserMessage(command.InitialMessage));
         }
 
-        await PublishTraceAsync(command.SessionId, "Workflow started.", "info");
+        await PublishTraceAsync(command.SessionId, "Workflow started.", TraceConstants.IconGitBranch, TraceConstants.ColorPrimary);
         await PublishAgentStateAsync(command.SessionId, "triage", "active", "Running");
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
@@ -139,7 +139,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         var session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id));
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
-        await PublishTraceAsync(command.SessionId, "User message received.", "info");
+        await PublishTraceAsync(command.SessionId, "User message received.", TraceConstants.IconGitBranch, TraceConstants.ColorPrimary);
         await PublishAgentStateAsync(command.SessionId, "triage", "active", "Running");
         await session.EnqueueMessageAsync(command.Text);
     }
@@ -168,7 +168,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             CreatedAt = DateTime.UtcNow,
             SplitMirror = true
         });
-        await PublishTraceAsync(command.SessionId, "Human message received and routed to session.", "info");
+        await PublishTraceAsync(command.SessionId, "Human message received and routed to session.", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary);
     }
 
     private async Task HandleRunScenarioAsync(MafRunScenarioCommand command)
@@ -179,7 +179,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        await PublishTraceAsync(command.SessionId, $"Scenario '{command.ScenarioId}' requested.", "info");
+        await PublishTraceAsync(command.SessionId, $"Scenario '{command.ScenarioId}' requested.", TraceConstants.IconTag, TraceConstants.ColorPrimary);
         await session.EnqueueMessageAsync(command.ScenarioId);
     }
 
@@ -223,17 +223,16 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         await PublishPublicEventAsync(sessionId, "message", payload);
     }
 
-    private async Task PublishTraceAsync(string sessionId, string description, string level)
+    private async Task PublishTraceAsync(string sessionId, string title, string icon = "git-branch", string color = "primary")
     {
         await PublishPublicEventAsync(sessionId, "trace", new MafTracePayload
         {
             Id = GenerateId("trc"),
             Time = DateTime.UtcNow,
-            Icon = "git-branch",
-            Color = "primary",
-            Title = "MAF Workflow",
-            Description = description,
-            Level = level
+            Icon = icon,
+            Color = color,
+            Title = title,
+            Level = color
         });
     }
 
@@ -368,7 +367,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             catch (Exception ex)
             {
                 Logger.LogError($"Session {_sessionId} failed: {ex.Message}");
-                await _parent.PublishTraceAsync(_sessionId, $"Session error: {ex.Message}", "error");
+                await _parent.PublishTraceAsync(_sessionId, $"Session error: {ex.Message}", TraceConstants.IconSiren, TraceConstants.ColorError);
             }
         }
 
@@ -410,6 +409,16 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             });
 
             return await _incomingMessages.Reader.ReadAsync(cancellationToken);
+        }
+
+        public async Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default)
+        {
+            await _parent.PublishTypingAsync(_sessionId, on, label);
+        }
+
+        public async Task PublishTraceAsync(string title, string icon = "terminal", string color = "primary", CancellationToken cancellationToken = default)
+        {
+            await _parent.PublishTraceAsync(_sessionId, title, icon, color);
         }
 
         public async Task<string> ReadNextMessageAsync(CancellationToken cancellationToken = default)
@@ -645,10 +654,6 @@ internal sealed class MafTracePayload
 
     [JsonPropertyName("title")]
     public string Title { get; set; } = string.Empty;
-
-    [JsonPropertyName("description")]
-    public string Description { get; set; } = string.Empty;
-
     [JsonPropertyName("level")]
     public string Level { get; set; } = string.Empty;
 }

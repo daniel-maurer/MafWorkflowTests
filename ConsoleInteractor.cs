@@ -6,6 +6,8 @@ namespace SupportWorkflow;
 internal interface IUserInteractor
 {
     Task<string> GetUserResponseAsync(string prompt, CancellationToken cancellationToken = default);
+    Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default);
+    Task PublishTraceAsync(string title, string icon = "terminal", string color = "primary", CancellationToken cancellationToken = default);
 }
 
 internal sealed class ConsoleInteractor : IUserInteractor
@@ -34,5 +36,19 @@ internal sealed class ConsoleInteractor : IUserInteractor
             }
             Console.WriteLine("Entrada inválida. Por favor, responda corretamente.");
         }
+    }
+
+    public Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default)
+    {
+        // Console interactor does not support typing indicators,
+        // so this is a no-op in terminal mode.
+        return Task.CompletedTask;
+    }
+
+    public Task PublishTraceAsync(string title, string icon = "terminal", string color = "primary", CancellationToken cancellationToken = default)
+    {
+        // Console interactor does not support trace publishing,
+        // so this is a no-op in terminal mode.
+        return Task.CompletedTask;
     }
 }

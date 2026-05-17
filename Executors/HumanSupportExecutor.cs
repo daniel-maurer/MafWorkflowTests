@@ -45,6 +45,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         }
 
         Logger.LogInfo("Starting human support handling for complex/unknown issue");
+        await _userInteractor.PublishTraceAsync("Connecting to human support agent", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
         Logger.OutputSystem("\n" + new string('=', 80));
         Logger.OutputSystem("[ATENDENTE SUPORTE] Agora você controla o atendimento humano via terminal.");
         Logger.OutputSystem("[ATENDENTE SUPORTE] Digite a fala do atendente humano e a fala do usuário em sequência.");
@@ -54,15 +55,18 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         string humanAgentResponse = await _userInteractor.GetUserResponseAsync("[ATENDENTE HUMANO] ", cancellationToken);
         if (TryCompleteCommand(humanAgentResponse, out var completionResult))
         {
+            await _userInteractor.PublishTraceAsync("Human support interaction completed", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
             await context.YieldOutputAsync(completionResult, cancellationToken);
             return completionResult;
         }
+        await _userInteractor.PublishTraceAsync("Human support agent engaged", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
         Logger.OutputAgent($"[ATENDENTE HUMANO] {humanAgentResponse}");
         Logger.LogDebug($"Human agent said: {humanAgentResponse}");
 
         string userReply = await _userInteractor.GetUserResponseAsync("[USUÁRIO] ", cancellationToken);
         if (TryCompleteCommand(userReply, out completionResult))
         {
+            await _userInteractor.PublishTraceAsync("Human support interaction completed", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
             await context.YieldOutputAsync(completionResult, cancellationToken);
             return completionResult;
         }
@@ -72,6 +76,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         // Considera a última resposta do atendente como final
         string finalHumanResponse = humanAgentResponse;
 
+        await _userInteractor.PublishTraceAsync("Awaiting user confirmation on resolution", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
         string confirmation = await _userInteractor.GetUserResponseAsync("[USUÁRIO] (sim/não) ", cancellationToken);
         Logger.OutputUser($"[USUÁRIO] {confirmation}\n");
         Logger.LogDebug($"User confirmation: {confirmation}");
@@ -82,6 +87,15 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         Logger.OutputSystem("[SISTEMA] Finalizando atendimento com suporte humano");
         Logger.OutputSystem(new string('=', 80) + "\n");
         Logger.LogInfo($"Human support interaction completed - Issue resolved: {isResolved}");
+        
+        if (isResolved)
+        {
+            await _userInteractor.PublishTraceAsync("Issue resolved by human support", TraceConstants.IconUserCheck, TraceConstants.ColorSuccess, cancellationToken);
+        }
+        else
+        {
+            await _userInteractor.PublishTraceAsync("Human support completed - issue not resolved", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
+        }
 
         // Pattern recording is handled later by the PatternRecordExecutor.
 

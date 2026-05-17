@@ -42,12 +42,16 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
         Logger.LogInfo("Starting resolution process...");
         Logger.LogDebug($"Problem - IsKnown: {frequentProblemResult.IsKnown}");
         Logger.LogDebug($"Problem Details: {frequentProblemResult.MessageForUser}");
+        await _userInteractor.PublishTraceAsync("Starting resolution attempt", TraceConstants.IconWrench, TraceConstants.ColorPrimary, cancellationToken);
+        await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", true, cancellationToken);
         
         var actionsExecuted = new List<string>();
 
         // If problem is not known, escalate to human
         if (!frequentProblemResult.IsKnown)
         {
+            await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Problem not recognized, escalating to human support", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
             var escalationResult = new ResolutionResult
             {
                 IsResolved = false,
@@ -64,6 +68,8 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
         // Problem is known and not complex, attempt resolution
         if (frequentProblemResult.MatchedIssue == null || string.IsNullOrWhiteSpace(frequentProblemResult.MatchedIssue.Solution))
         {
+            await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
+            await _userInteractor.PublishTraceAsync("No solution found for known issue, escalating to human support", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
             var escalationResult = new ResolutionResult
             {
                 IsResolved = false,
@@ -94,6 +100,7 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
         }
         else
         {
+            await _userInteractor.PublishTraceAsync("Executing resolution tools", TraceConstants.IconWrench, TraceConstants.ColorPrimary, cancellationToken);
             var agentInput = $@"Resolva o seguinte problema:
 Problema: {frequentProblemResult.MatchedIssue?.Problem}
 Solução conhecida: {frequentProblemResult.MatchedIssue?.Solution}
@@ -136,6 +143,7 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
             catch (OperationCanceledException)
             {
                 Logger.LogError("Resolution process was cancelled");
+                await _userInteractor.PublishTraceAsync("Resolution cancelled by user", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
                 var cancelledResult = new ResolutionResult
                 {
                     IsResolved = false,
@@ -145,6 +153,7 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
                     EscalationReason = "Process was cancelled by user"
                 };
                 await context.YieldOutputAsync(cancelledResult, cancellationToken);
+                await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
                 return cancelledResult;
             }
             catch (Exception ex)
@@ -153,6 +162,7 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
                 Logger.LogError($"Message: {ex.Message}");
                 Logger.LogDebug($"Stack Trace: {ex.StackTrace}");
                 
+                await _userInteractor.PublishTraceAsync("Error during resolution attempt", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
                 var errorResult = new ResolutionResult
                 {
                     IsResolved = false,
@@ -162,10 +172,13 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
                     EscalationReason = $"Error during resolution: {ex.GetType().Name}"
                 };
                 await context.YieldOutputAsync(errorResult, cancellationToken);
+                await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
                 throw;
             }
         }
         
+        await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
+        await _userInteractor.PublishTraceAsync("Awaiting user confirmation on resolution", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
         // Ask user for confirmation
             string userConfirmation = await _userInteractor.GetUserResponseAsync("\n✓ Seu problema foi resolvido? (sim/não)", cancellationToken);
             bool resolved = userConfirmation.ToLower() is "sim" or "s" or "yes" or "y";
@@ -178,6 +191,15 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
                 ActionsExecuted = actionsExecuted,
                 EscalationReason = !resolved ? "User reported issue not resolved after automated resolution attempt" : null
             };
+            
+            if (resolved)
+            {
+                await _userInteractor.PublishTraceAsync("Issue resolved successfully", TraceConstants.IconUserCheck, TraceConstants.ColorSuccess, cancellationToken);
+            }
+            else
+            {
+                await _userInteractor.PublishTraceAsync("Resolution unsuccessful, escalating to human support", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
+            }
             
             await context.YieldOutputAsync(resolutionOutcome, cancellationToken);
             Logger.LogInfo("Resolution process completed successfully");

@@ -48,9 +48,12 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
         // Only record patterns if issue was actually resolved
         if (!resolutionResult.IsResolved)
         {
+            await _userInteractor.PublishTraceAsync("Pattern recording skipped - issue not resolved", TraceConstants.IconFileSearch, TraceConstants.ColorPrimary, cancellationToken);
             Logger.LogInfo("Skipping pattern recording - issue was not resolved");
             return CreateEmptyResult();
         }
+
+        await _userInteractor.PublishTraceAsync("Analyzing pattern from resolved issue", TraceConstants.IconPickaxe, TraceConstants.ColorPrimary, cancellationToken);
 
         // Get problem summary and escalation reason from context
         var problemSummary = await context.ReadStateAsync<string>(Constants.ProblemSummaryKey, Constants.TriageStateScope) ?? "Unknown problem";
@@ -64,6 +67,8 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
 
         try
         {
+            await _userInteractor.SetAgentTypingAsync("Pattern Record Agent analyzing", true, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Extracting pattern characteristics", TraceConstants.IconTag, TraceConstants.ColorPrimary, cancellationToken);
             var history = new List<ChatMessage>
             {
                 new ChatMessage(ChatRole.User, analysisPrompt)
@@ -83,19 +88,26 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
                 // Display pattern information to user
                 DisplayPatternInfo(patternResult);
 
+                await _userInteractor.PublishTraceAsync("Pattern analysis complete, recording to knowledge base", TraceConstants.IconBookOpen, TraceConstants.ColorSuccess, cancellationToken);
                 await context.YieldOutputAsync(patternResult, cancellationToken);
                 return patternResult;
             }
             else
             {
+                await _userInteractor.PublishTraceAsync("Failed to analyze pattern", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
                 Logger.LogError("Failed to deserialize pattern record result");
                 return CreateEmptyResult();
             }
         }
         catch (Exception ex)
         {
+            await _userInteractor.PublishTraceAsync("Error during pattern analysis", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
             Logger.LogError($"Error during pattern recording: {ex.Message}");
             return CreateEmptyResult();
+        }
+        finally
+        {
+            await _userInteractor.SetAgentTypingAsync("Pattern Record Agent analyzing", false, cancellationToken);
         }
     }
 
