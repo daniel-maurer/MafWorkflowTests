@@ -35,7 +35,7 @@ internal static class HumanSupportSession
             cancellationToken: cancellationToken);
 
         await userInteractor.SendSystemMessageAsync(
-            "Human agent Sarah M. assigned. Joining the conversation now.",
+            "Human agent Daniel M. assigned. Joining the conversation now.",
             systemStyle: "handoff",
             icon: "user-check",
             audience: MessageAudience.Both,
@@ -46,12 +46,12 @@ internal static class HumanSupportSession
         await userInteractor.PublishContextAsync(
             "human-chat",
             "Human handoff",
-            "Sarah M. is talking with the customer.",
+            "Daniel M. is talking with the customer.",
             "human-support",
             true,
             cancellationToken);
         await userInteractor.PublishTraceAsync(
-            $"Human agent Sarah M. joined the conversation ({handoffReason})",
+            $"Human agent Daniel M. joined the conversation ({handoffReason})",
             TraceConstants.IconUserCheck,
             TraceConstants.ColorPrimary,
             cancellationToken);

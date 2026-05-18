@@ -37,7 +37,7 @@
       "id": "human-support",
       "icon": "headphones",
       "title": "Human Support",
-      "description": "Sarah M. — human attendant joins when no KB match or automated resolution fails.",
+      "description": "Daniel M. — human attendant joins when no KB match or automated resolution fails.",
       "colorTheme": "human",
       "order": 4,
       "tools": []

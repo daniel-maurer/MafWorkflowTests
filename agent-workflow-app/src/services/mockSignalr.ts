@@ -408,14 +408,14 @@ export function createMockHubConnection(opts: { workflowId: string }): MockHubCo
       senderName: 'System',
       icon: 'user-check',
       systemStyle: 'escalate',
-      text: 'Human agent Sarah M. assigned. Joining the conversation now.',
+      text: 'Human agent Daniel M. assigned. Joining the conversation now.',
       splitMirror: true,
     });
-    s.trace({ icon: 'user', color: 'human', title: 'Human handoff — ticket assigned to Sarah M.', level: 'info' });
+    s.trace({ icon: 'user', color: 'human', title: 'Human handoff — ticket assigned to Daniel M.', level: 'info' });
     s.ctx({
       status: 'human-chat',
       chatTitle: 'Human Handoff',
-      chatSubtitle: 'Human agent Sarah M. is active',
+      chatSubtitle: 'Human agent Daniel M. is active',
       activeAgentId: 'human',
       humanMode: true,
     });
@@ -426,8 +426,8 @@ export function createMockHubConnection(opts: { workflowId: string }): MockHubCo
     s.splitMode(true);
 
     await delay(500);
-    s.typing('user-msgs', 'Sarah M. typing', true);
-    s.typing('human-msgs', 'Sarah M. typing', true);
+    s.typing('user-msgs', 'Daniel M. typing', true);
+    s.typing('human-msgs', 'Daniel M. typing', true);
     await delay(1800);
     s.typing('user-msgs', '', false);
     s.typing('human-msgs', '', false);
@@ -435,13 +435,13 @@ export function createMockHubConnection(opts: { workflowId: string }): MockHubCo
       type: 'message',
       side: 'left',
       senderType: 'human',
-      senderName: 'Sarah M.',
+      senderName: 'Daniel M.',
       icon: 'headphones',
       bubbleStyle: 'human',
       text: "Hi! I'm Sarah, your human support specialist. I've reviewed the case so far. This looks like a TISS schema integration issue. Which connector version are you using, and what exact error code are you seeing?",
       splitMirror: true,
     });
-    s.trace({ icon: 'user', color: 'human', title: 'Sarah M. joined and sent opening message', level: 'info' });
+    s.trace({ icon: 'user', color: 'human', title: 'Daniel M. joined and sent opening message', level: 'info' });
   }
 
   // ── Public API ─────────────────────────────────────────────────────
@@ -480,13 +480,13 @@ export function createMockHubConnection(opts: { workflowId: string }): MockHubCo
         type: 'message',
         side: 'left',
         senderType: 'human',
-        senderName: 'Sarah M.',
+        senderName: 'Daniel M.',
         icon: 'headphones',
         bubbleStyle: 'human',
         text,
         splitMirror: true,
       });
-      s.trace({ icon: 'headphones', color: 'human', title: `Sarah M.: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`, level: 'info' });
+      s.trace({ icon: 'headphones', color: 'human', title: `Daniel M.: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`, level: 'info' });
     },
     async runScenario(sessionId, scenarioId) {
       const text =
@@ -514,13 +514,13 @@ export function createMockHubConnection(opts: { workflowId: string }): MockHubCo
         type: 'message',
         side: 'left',
         senderType: 'human',
-        senderName: 'Sarah M.',
+        senderName: 'Daniel M.',
         icon: 'headphones',
         bubbleStyle: 'human',
         text: 'The issue has been resolved on our end. ✅ The integration configuration has been updated. Please test the connection again.',
         splitMirror: true,
       });
-      s.trace({ icon: 'check-circle', color: 'success', title: 'Sarah M. marked issue as resolved', level: 'success' });
+      s.trace({ icon: 'check-circle', color: 'success', title: 'Daniel M. marked issue as resolved', level: 'success' });
       await delay(800);
       s.msg({
         type: 'system',
@@ -529,7 +529,7 @@ export function createMockHubConnection(opts: { workflowId: string }): MockHubCo
         senderName: 'System',
         icon: 'check-circle',
         systemStyle: 'resolved',
-        text: 'Human agent Sarah M. marked issue as resolved. Triggering Pattern Record Agent...',
+        text: 'Human agent Daniel M. marked issue as resolved. Triggering Pattern Record Agent...',
         splitMirror: true,
       });
       await delay(600);

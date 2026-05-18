@@ -63,7 +63,10 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
         {
             await _userInteractor.PublishTraceAsync("Searching knowledge base for known issues", TraceConstants.IconDatabase, TraceConstants.ColorPrimary, cancellationToken);
             var response = await this._frequentProblemAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
-            var frequentProblemResult = JsonSerializer.Deserialize<FrequentProblemResult>(response.Text);
+            
+            // Extract JSON object from response text, handling cases where there may be extra text or multiple objects
+            var jsonText = ExtractJsonFromResponse(response.Text);
+            var frequentProblemResult = JsonSerializer.Deserialize<FrequentProblemResult>(jsonText);
             
             if (frequentProblemResult == null)
             {
@@ -179,5 +182,43 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
             .Where(word => word.Length > 2) // Filter out very short words
             .Take(10) // Limit to first 10 words
             .ToList();
+    }
+
+    /// <summary>
+    /// Extracts a valid JSON object from response text that may contain extra text or multiple objects.
+    /// Finds the first complete JSON object in the response.
+    /// </summary>
+    private static string ExtractJsonFromResponse(string responseText)
+    {
+        if (string.IsNullOrWhiteSpace(responseText))
+            throw new InvalidOperationException("Response text is empty.");
+
+        // Find the first opening brace
+        int startIndex = responseText.IndexOf('{');
+        if (startIndex == -1)
+            throw new InvalidOperationException("No JSON object found in response text.");
+
+        // Find the matching closing brace
+        int braceCount = 0;
+        int endIndex = -1;
+        for (int i = startIndex; i < responseText.Length; i++)
+        {
+            if (responseText[i] == '{')
+                braceCount++;
+            else if (responseText[i] == '}')
+            {
+                braceCount--;
+                if (braceCount == 0)
+                {
+                    endIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (endIndex == -1)
+            throw new InvalidOperationException("No matching closing brace found in response text.");
+
+        return responseText.Substring(startIndex, endIndex - startIndex + 1);
     }
 }

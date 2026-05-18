@@ -160,13 +160,13 @@ hand-off). Response is `SessionSnapshot` (see `src/types/workflow.ts`).
   "ticketId": "#TKT-4821",
   "status": "human-chat",
   "chatTitle": "Human Handoff",
-  "chatSubtitle": "Human agent Sarah M. is active",
+  "chatSubtitle": "Human agent Daniel M. is active",
   "activeAgentId": "human",
   "category": "Integration / Unknown",
   "confidence": 0.52,
   "intent": "Unrecognized integration error",
   "humanMode": true,
-  "assignedHumanAgent": { "id": "hum_01", "name": "Sarah M.", "icon": "headphones" },
+  "assignedHumanAgent": { "id": "hum_01", "name": "Daniel M.", "icon": "headphones" },
   "resolutionSteps": [
     { "step": 1, "label": "Human agent resolved", "ok": true }
   ],

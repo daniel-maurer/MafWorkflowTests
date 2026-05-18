@@ -2,9 +2,9 @@
   {
     "id": "d59ff19b-5399-4180-977c-a21bb4cdcae7",
     "pattern_description": "Os clientes relatam não ter recebido seus vales-refeição devido a atrasos de pagamento que muitas vezes são resolvidos com informações sobre prazos específicos.",
-    "frequency": 13,
+    "frequency": 14,
     "first_detected": "2026-04-22T19:52:41.4841592Z",
-    "last_detected": "2026-05-17T22:09:00.5239337Z",
+    "last_detected": "2026-05-18T13:24:11.2169203Z",
     "example_symptoms": [
       "Cliente não recebeu vale-refeição",
       "Atraso no pagamento de benefícios",
@@ -41,7 +41,9 @@
       "Dúvidas sobre o pagamento de benefícios",
       "Follow-ups sobre o estado do vale-refeição",
       "Cliente reclama de não ter recebido o vale-refeição",
-      "Cliente expressa preocupação com atrasos nos pagamentos"
+      "Cliente expressa preocupação com atrasos nos pagamentos",
+      "Cliente não recebeu o vale transporte",
+      "Falta de informação sobre o pagamento deste mês"
     ],
     "example_solutions": [
       "O vale-refeição será pago no dia 25/04.",
@@ -52,11 +54,30 @@
       "O pagamento do vale-refeição será efetuado no dia 25/04. Para mais assistência, um agente humano pode ajudar.",
       "O vale-refeição será pago no dia 25/04, conforme programação.",
       "Informar ao cliente que o vale-refeição será pago no dia 25/04.",
-      "O vale-refeição será pago na data estipulada."
+      "O vale-refeição será pago na data estipulada.",
+      "Verificar com o departamento de finanças sobre o status dos pagamentos de vale transporte e, se necessário, realizar a reemissão do vale transporte para o cliente."
     ],
     "confidence": 95,
     "promoted_to_known_issue": true,
     "temporal_characteristics": "Mensalmente, com frequência no final do mês",
     "linked_known_issue": "Os clientes relatam não ter recebido seus vales-refeição devido a atrasos de pagamento que muitas vezes são resolvidos com informações sobre prazos específicos."
+  },
+  {
+    "id": "53d01d11-942b-442d-a333-66df715f1456",
+    "pattern_description": "Problemas relacionados ao não recebimento de benefícios como vale-refeição por parte dos colaboradores.",
+    "frequency": 1,
+    "first_detected": "2026-05-18T13:21:03.2828346Z",
+    "last_detected": "2026-05-18T13:21:03.2830152Z",
+    "example_symptoms": [
+      "Cliente não recebeu o vale-refeição",
+      "Cliente reclama sobre atraso no pagamento"
+    ],
+    "example_solutions": [
+      "O vale-refeição será pago no dia 25 de cada mês."
+    ],
+    "confidence": 0.95,
+    "promoted_to_known_issue": true,
+    "temporal_characteristics": "Os pagamentos ocorrem mensalmente em uma data específica (25)",
+    "linked_known_issue": null
   }
 ]

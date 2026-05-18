@@ -169,7 +169,7 @@ All tests executed against `npm run dev` on `http://127.0.0.1:5173` with Playwri
 - ✅ Login (mock mode) — username/password fields, Sign-in disables until username is filled, submit navigates to `/#/workflows`
 - ✅ Workflows page — three cards rendered, multi-select via checkbox UI, **Launch** navigates to first selected
 - ✅ Workflow run (known-issue flow) — typed "I can't login" → triage → freq → resolution (tool calls + KB match score 0.97) → pattern → resolved. **No duplicate user message** after fix to mock echo.
-- ✅ Workflow run (human-handoff scenario) — split chat appears (user view ‖ Sarah M. agent view), messages mirror across both, **Mark as Solved → trigger Pattern Agent** closes the session and updates pipeline.
+- ✅ Workflow run (human-handoff scenario) — split chat appears (user view ‖ Daniel M. agent view), messages mirror across both, **Mark as Solved → trigger Pattern Agent** closes the session and updates pipeline.
 - ✅ Trace tab and KB tab populate live as events arrive.
 - ✅ Theme toggle (dark ⇄ light) — verified visually, both themes legible.
 - ✅ Mobile 390×844 — topbar wraps; pipeline chips hidden < 880 px; three columns stack vertically; no horizontal overflow.

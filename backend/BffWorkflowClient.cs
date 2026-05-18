@@ -26,7 +26,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             ["freq"] = new() { Id = "freq", Name = "Freq. Problem Agent", Icon = "database", BubbleStyle = "freq", ColorTheme = "warning" },
             ["res"] = new() { Id = "res", Name = "Resolution Agent", Icon = "wrench", BubbleStyle = "res", ColorTheme = "success" },
             ["pattern"] = new() { Id = "pattern", Name = "Pattern Record Agent", Icon = "bar-chart-2", BubbleStyle = "pattern", ColorTheme = "error" },
-            ["human-support"] = new() { Id = "human-support", Name = "Sarah M.", Icon = "headphones", BubbleStyle = "human", ColorTheme = "human" },
+            ["human-support"] = new() { Id = "human-support", Name = "Daniel M.", Icon = "headphones", BubbleStyle = "human", ColorTheme = "human" },
             ["maf"] = AgentIdentity.Default,
         };
 

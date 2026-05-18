@@ -221,7 +221,7 @@ export function ChatPanel({ session }: Props) {
                 <div className="wf-av human" style={{ width: 20, height: 20 }}>
                   <Icon name="headphones" size={10} />
                 </div>
-                <span className="wf-split-pane-label human">Sarah M. — Human Agent</span>
+                <span className="wf-split-pane-label human">Daniel M. — Human Agent</span>
                 <span style={{ fontSize: 10, color: 'var(--color-text-faint)', marginLeft: 'auto' }}>
                   Agent side
                 </span>
@@ -297,7 +297,7 @@ function mirrorForHumanPane(m: Message): Message {
   // In the human pane: user messages appear on the left; human messages on the right.
   if (m.type === 'system') return m;
   if (m.senderType === 'user') return { ...m, side: 'left' };
-  if (m.senderType === 'human') return { ...m, side: 'right', senderName: 'Sarah M. (you)' };
+  if (m.senderType === 'human') return { ...m, side: 'right', senderName: 'Daniel M. (you)' };
   return m;
 }
 
