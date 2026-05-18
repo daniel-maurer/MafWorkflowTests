@@ -97,9 +97,22 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                         frequentProblemResult.MatchedIssue = matchedIssues[0];
                         frequentProblemResult.RequiredTools = matchedIssues[0].ToolsRequired ?? new List<string>();
                         frequentProblemResult.SuccessRate = matchedIssues[0].SuccessRate;
-                        
+
                         Logger.LogExecutorResult($"[Problemas Frequentes] Problema conhecido: {matchedIssues[0].Problem}");
                         Logger.LogDebug($"Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
+
+                        // Publish matching KB entries so the frontend KB tab updates immediately,
+                        // not only after the workflow output is yielded downstream.
+                        var kbItems = matchedIssues.Select(issue => new KbEntry
+                        {
+                            Title = issue.Problem,
+                            Category = string.Empty,
+                            Score = issue.SuccessRate,
+                            Summary = issue.Symptoms.FirstOrDefault() ?? issue.Solution ?? string.Empty,
+                            ResolutionType = issue.McpAction ?? "knowledge-base",
+                            Tags = issue.Keywords?.ToArray() ?? Array.Empty<string>(),
+                        }).ToList();
+                        await _userInteractor.PublishKnowledgeBaseAsync(kbItems, cancellationToken);
                     }
                     else
                     {
@@ -110,6 +123,8 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                         frequentProblemResult.MessageForUser = "Problema não corresponde a uma issue conhecida. Encaminhando para suporte humano.";
                         frequentProblemResult.RequiredTools = new List<string>();
                         frequentProblemResult.SuccessRate = 0;
+
+                        await _userInteractor.PublishKnowledgeBaseAsync(Array.Empty<KbEntry>(), cancellationToken);
                     }
                 }
                 

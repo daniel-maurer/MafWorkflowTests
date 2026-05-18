@@ -16,6 +16,20 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
     private readonly Func<IUserInteractor, Workflow> _workflowFactory;
 
+    // Central registry of agent identities used to render chat messages correctly on the frontend.
+    // Keeping this in one place ensures every executor surfaces its own icon/name/color rather than
+    // a generic "MAF Agent" badge.
+    public static readonly IReadOnlyDictionary<string, AgentIdentity> AgentRegistry =
+        new Dictionary<string, AgentIdentity>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["triage"] = new() { Id = "triage", Name = "Triage Agent", Icon = "git-branch", BubbleStyle = "triage", ColorTheme = "primary" },
+            ["freq"] = new() { Id = "freq", Name = "Freq. Problem Agent", Icon = "database", BubbleStyle = "freq", ColorTheme = "warning" },
+            ["res"] = new() { Id = "res", Name = "Resolution Agent", Icon = "wrench", BubbleStyle = "res", ColorTheme = "success" },
+            ["pattern"] = new() { Id = "pattern", Name = "Pattern Record Agent", Icon = "bar-chart-2", BubbleStyle = "pattern", ColorTheme = "error" },
+            ["human-support"] = new() { Id = "human-support", Name = "Sarah M.", Icon = "headphones", BubbleStyle = "human", ColorTheme = "human" },
+            ["maf"] = AgentIdentity.Default,
+        };
+
     public BffWorkflowClient(WorkflowConfiguration configuration, IChatClient chatClient, Func<IUserInteractor, Workflow> workflowFactory)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
@@ -141,7 +155,6 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         var session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id));
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
         await PublishTraceAsync(command.SessionId, "User message received.", TraceConstants.IconGitBranch, TraceConstants.ColorPrimary);
-        await PublishAgentStateAsync(command.SessionId, "triage", "active", "Running");
         await session.EnqueueMessageAsync(command.Text);
     }
 
@@ -153,22 +166,23 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        await session.EnqueueMessageAsync(command.Text);
+        var human = AgentRegistry["human-support"];
         await PublishMessageAsync(command.SessionId, new MafMessagePayload
         {
             Id = GenerateId("msg"),
             Type = "message",
             Side = "left",
             SenderType = "human",
-            SenderName = "Human Agent",
-            Icon = "person",
-            BubbleStyle = "human",
+            SenderName = human.Name,
+            Icon = human.Icon,
+            BubbleStyle = human.BubbleStyle,
             SystemStyle = null,
             Text = command.Text,
             Tools = Array.Empty<object>(),
             CreatedAt = DateTime.UtcNow,
-            SplitMirror = true
+            SplitMirror = true,
         });
+        await session.EnqueueMessageAsync(command.Text);
         await PublishTraceAsync(command.SessionId, "Human message received and routed to session.", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary);
     }
 
@@ -288,6 +302,11 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private static string GenerateId(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
 
+    private static AgentIdentity ResolveAgent(AgentIdentity? agent) =>
+        agent is null
+            ? AgentIdentity.Default
+            : AgentRegistry.TryGetValue(agent.Id, out var registered) ? registered : agent;
+
     private MafMessagePayload CreateUserMessage(string text)
     {
         return new MafMessagePayload
@@ -296,14 +315,38 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Type = "message",
             Side = "right",
             SenderType = "user",
-            SenderName = "User",
+            SenderName = "You",
             Icon = "user",
             BubbleStyle = "user",
             SystemStyle = null,
             Text = text,
             Tools = Array.Empty<object>(),
             CreatedAt = DateTime.UtcNow,
-            SplitMirror = false
+            // Always mirror the user's own message into the split view so the chat history
+            // is preserved when the workflow flips into human-handoff mode.
+            SplitMirror = true,
+        };
+    }
+
+    private MafMessagePayload CreateAgentMessage(string text, AgentIdentity agent, IReadOnlyList<AgentToolCall>? tools)
+    {
+        return new MafMessagePayload
+        {
+            Id = GenerateId("msg"),
+            Type = "message",
+            Side = "left",
+            SenderType = "agent",
+            SenderName = agent.Name,
+            Icon = agent.Icon,
+            BubbleStyle = agent.BubbleStyle,
+            SystemStyle = null,
+            Text = text,
+            Tools = (tools ?? Array.Empty<AgentToolCall>())
+                .Select(t => (object)new MafToolCallPayload { Name = t.Name, Args = t.Args, Ok = t.Ok })
+                .ToArray(),
+            CreatedAt = DateTime.UtcNow,
+            // Default agent messages to mirror so the human-handoff split chat keeps the full history.
+            SplitMirror = true,
         };
     }
 
@@ -396,44 +439,42 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         }
 
 
-        public async Task SendUserResponseAsync(string prompt, CancellationToken cancellationToken = default)
+        public async Task SendUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, CancellationToken cancellationToken = default)
         {
-            await _parent.PublishMessageAsync(_sessionId, new MafMessagePayload
+            if (IsConsolePrompt(prompt) && (tools is null || tools.Count == 0))
             {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = "MAF Agent",
-                Icon = "git-branch",
-                BubbleStyle = "agent",
-                SystemStyle = null,
-                Text = prompt,
-                Tools = Array.Empty<object>(),
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
-            });
+                return;
+            }
+
+            var resolved = ResolveAgent(agent);
+            await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools));
         }
 
-        public async Task<string> GetUserResponseAsync(string prompt, CancellationToken cancellationToken = default)
+        public async Task<string> GetUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, CancellationToken cancellationToken = default)
         {
-            await _parent.PublishMessageAsync(_sessionId, new MafMessagePayload
+            // Some executors call GetUserResponseAsync purely to read the next user/human input
+            // and pass a console-style placeholder prompt (e.g. "[ATENDENTE HUMANO] "). Those
+            // placeholders should NOT show up as agent chat bubbles in the UI.
+            if (!IsConsolePrompt(prompt))
             {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = "MAF Agent",
-                Icon = "git-branch",
-                BubbleStyle = "agent",
-                SystemStyle = null,
-                Text = prompt,
-                Tools = Array.Empty<object>(),
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
-            });
+                var resolved = ResolveAgent(agent);
+                await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools));
+            }
 
             return await _incomingMessages.Reader.ReadAsync(cancellationToken);
+        }
+
+        private static bool IsConsolePrompt(string? prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt))
+            {
+                return true;
+            }
+
+            var trimmed = prompt.Trim();
+            return trimmed.StartsWith("[ATENDENTE", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("[USUÁRIO", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("[SISTEMA", StringComparison.OrdinalIgnoreCase);
         }
 
         public async Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default)
@@ -468,6 +509,21 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await _parent.PublishPublicEventAsync(_sessionId, "splitMode", on);
         }
 
+        public async Task PublishKnowledgeBaseAsync(IReadOnlyList<KbEntry> items, CancellationToken cancellationToken = default)
+        {
+            var payload = (items ?? Array.Empty<KbEntry>()).Select(item => new MafKbPayload
+            {
+                Id = string.IsNullOrWhiteSpace(item.Id) ? GenerateId("kb") : item.Id,
+                Title = item.Title,
+                Category = item.Category,
+                Score = item.Score,
+                Summary = item.Summary,
+                ResolutionType = item.ResolutionType,
+                Tags = item.Tags?.ToArray() ?? Array.Empty<string>(),
+            }).ToArray();
+            await _parent.PublishKbAsync(_sessionId, payload);
+        }
+
         public async Task<string> ReadNextMessageAsync(CancellationToken cancellationToken = default)
         {
             return await _incomingMessages.Reader.ReadAsync(cancellationToken);
@@ -488,134 +544,88 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         if (outputData is TriageResult triageResult)
         {
-            await PublishMessageAsync(sessionId, new MafMessagePayload
-            {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = "Triage Agent",
-                Icon = "git-branch",
-                BubbleStyle = "triage",
-                SystemStyle = null,
-                Text = triageResult.Summary,
-                Tools = Array.Empty<object>(),
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
-            });
+            await PublishMessageAsync(sessionId, CreateAgentMessage(
+                string.IsNullOrWhiteSpace(triageResult.Summary) ? "Issue classified." : triageResult.Summary,
+                AgentRegistry["triage"], null));
             return;
         }
 
         if (outputData is FrequentProblemResult frequentProblemResult)
         {
-            await PublishMessageAsync(sessionId, new MafMessagePayload
+            await PublishMessageAsync(sessionId, CreateAgentMessage(
+                frequentProblemResult.MessageForUser ?? "Analyzing issue against known problems.",
+                AgentRegistry["freq"], null));
+
+            if (frequentProblemResult.MatchedIssue != null)
             {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = "KB Agent",
-                Icon = "search",
-                BubbleStyle = "kb",
-                SystemStyle = null,
-                Text = frequentProblemResult.MessageForUser ?? "Analyzing issue against known problems.",
-                Tools = Array.Empty<object>(),
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
-            });
-                if (frequentProblemResult.MatchedIssue != null)
+                var kbEntry = new MafKbPayload
                 {
-                    var kbEntry = new MafKbPayload
-                    {
-                        Id = GenerateId("kb"),
-                        Title = frequentProblemResult.MatchedIssue.Problem,
-                        Category = string.Empty,
-                        Score = frequentProblemResult.MatchedIssue.SuccessRate,
-                        Summary = frequentProblemResult.MatchedIssue.Symptoms.FirstOrDefault() ?? frequentProblemResult.MatchedIssue.Solution ?? string.Empty,
-                        ResolutionType = frequentProblemResult.MatchedIssue.McpAction ?? "knowledge-base",
-                        Tags = frequentProblemResult.MatchedIssue.Keywords.ToArray()
-                    };
-                    await PublishKbAsync(sessionId, new[] { kbEntry });
-                }
+                    Id = GenerateId("kb"),
+                    Title = frequentProblemResult.MatchedIssue.Problem,
+                    Category = string.Empty,
+                    Score = frequentProblemResult.MatchedIssue.SuccessRate,
+                    Summary = frequentProblemResult.MatchedIssue.Symptoms.FirstOrDefault() ?? frequentProblemResult.MatchedIssue.Solution ?? string.Empty,
+                    ResolutionType = frequentProblemResult.MatchedIssue.McpAction ?? "knowledge-base",
+                    Tags = frequentProblemResult.MatchedIssue.Keywords.ToArray()
+                };
+                await PublishKbAsync(sessionId, new[] { kbEntry });
+            }
             return;
         }
 
         if (outputData is ResolutionResult resolutionResult)
         {
+            var tools = (resolutionResult.ActionsExecuted ?? new List<string>())
+                .Where(action => !string.IsNullOrWhiteSpace(action))
+                .Select(action => new MafToolCallPayload
+                {
+                    Name = action,
+                    Args = string.Empty,
+                    Ok = resolutionResult.IsResolved,
+                })
+                .Cast<object>()
+                .ToArray();
+
             await PublishMessageAsync(sessionId, new MafMessagePayload
             {
                 Id = GenerateId("msg"),
                 Type = "message",
                 Side = "left",
                 SenderType = "agent",
-                SenderName = "Resolution Agent",
-                Icon = "check-circle",
-                BubbleStyle = "resolution",
+                SenderName = AgentRegistry["res"].Name,
+                Icon = AgentRegistry["res"].Icon,
+                BubbleStyle = AgentRegistry["res"].BubbleStyle,
                 SystemStyle = null,
                 Text = resolutionResult.MessageForUser ?? "Resolution completed.",
-                Tools = Array.Empty<object>(),
+                Tools = tools,
                 CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
-            });
-        }
-
-        if (outputData is string text)
-        {
-            await PublishMessageAsync(sessionId, new MafMessagePayload
-            {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = "MAF Agent",
-                Icon = "git-branch",
-                BubbleStyle = "agent",
-                SystemStyle = null,
-                Text = text,
-                Tools = Array.Empty<object>(),
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
+                SplitMirror = true,
             });
             return;
         }
 
         if (outputData is PatternRecordResult patternRecordResult)
         {
-            await PublishMessageAsync(sessionId, new MafMessagePayload
-            {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = "Pattern Record Agent",
-                Icon = "bar-chart-2",
-                BubbleStyle = "pattern",
-                SystemStyle = null,
-                Text = patternRecordResult.PatternDescription ?? "Pattern recorded.",
-                Tools = Array.Empty<object>(),
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
-            });
+            await PublishMessageAsync(sessionId, CreateAgentMessage(
+                patternRecordResult.PatternDescription ?? "Pattern recorded.",
+                AgentRegistry["pattern"], null));
+            return;
+        }
+
+        if (outputData is string text)
+        {
+            // Strings yielded by ResolutionExecutor / TriageExecutor are intermediate progress
+            // text. The dedicated typed-output branches above already publish the canonical
+            // agent message, so the string path is intentionally a no-op to avoid duplicated
+            // "MAF Agent" rows in the chat.
             return;
         }
 
         if (outputData != null)
         {
-            await PublishMessageAsync(sessionId, new MafMessagePayload
-            {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = "MAF Agent",
-                Icon = "git-branch",
-                BubbleStyle = "agent",
-                SystemStyle = null,
-                Text = outputData.ToString() ?? string.Empty,
-                Tools = Array.Empty<object>(),
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = false
-            });
+            await PublishMessageAsync(sessionId, CreateAgentMessage(
+                outputData.ToString() ?? string.Empty,
+                AgentIdentity.Default, null));
         }
     }
 
@@ -685,6 +695,18 @@ internal sealed class MafMessagePayload
 
     [JsonPropertyName("splitMirror")]
     public bool SplitMirror { get; set; }
+}
+
+internal sealed class MafToolCallPayload
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("args")]
+    public string Args { get; set; } = string.Empty;
+
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; } = true;
 }
 
 internal sealed class MafTracePayload

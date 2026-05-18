@@ -121,9 +121,8 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
             {
                 userMessage = "Estamos trabalhando para resolver seu problema. Por favor, aguarde um momento.";
             }
-            // here TODO
             history.Add(new ChatMessage(ChatRole.User, userMessage));
-            await _userInteractor.SendUserResponseAsync(userMessage, cancellationToken);
+            await _userInteractor.SendUserResponseAsync(userMessage, BffWorkflowClient.AgentRegistry["res"], cancellationToken: cancellationToken);
 
 
             Logger.OutputAgent($"\n{userMessage}");
@@ -164,12 +163,25 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
                     // If parsing fails, use the full response
                     Logger.LogDebug("Failed to parse agent response as JSON, using full response");
                 }
-                await context.YieldOutputAsync(userMessage, cancellationToken);
-
-                Logger.OutputAgent($"\n{userMessage}");
 
                 // Record which tools were meant to be called
                 actionsExecuted.AddRange(toolsToCall);
+
+                // Publish the resolution message together with the tool invocations so the chat shows:
+                //   Resolution Agent  ✅ Resolution applied.
+                //     reset_password(...)  ✓ OK
+                //     create_ticket(...)   ✓ OK
+                var resolutionTools = actionsExecuted
+                    .Where(action => !string.IsNullOrWhiteSpace(action))
+                    .Select(action => new AgentToolCall { Name = action, Args = string.Empty, Ok = true })
+                    .ToList();
+                await _userInteractor.SendUserResponseAsync(
+                    userMessage,
+                    BffWorkflowClient.AgentRegistry["res"],
+                    resolutionTools,
+                    cancellationToken: cancellationToken);
+
+                Logger.OutputAgent($"\n{userMessage}");
             }
             catch (OperationCanceledException)
             {
@@ -211,7 +223,7 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
         await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
         await _userInteractor.PublishTraceAsync("Awaiting user confirmation on resolution", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
         // Ask user for confirmation
-            string userConfirmation = await _userInteractor.GetUserResponseAsync("\n✓ Seu problema foi resolvido? (sim/não)", cancellationToken);
+            string userConfirmation = await _userInteractor.GetUserResponseAsync("\n✓ Seu problema foi resolvido? (sim/não)", BffWorkflowClient.AgentRegistry["res"], cancellationToken: cancellationToken);
             bool resolved = userConfirmation.ToLower() is "sim" or "s" or "yes" or "y";
             
             var resolutionOutcome = new ResolutionResult

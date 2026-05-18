@@ -65,6 +65,13 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
                 Logger.LogInfo("Triage analysis complete - problem understood");
                 Logger.LogExecutorResult($"[Triagem] Resumo do Problema: {detectionResult.Summary}");
 
+                // Surface the triage classification as a Triage Agent chat bubble so the user sees
+                // it under the correct identity/icon/color (instead of a generic "MAF Agent" row).
+                await _userInteractor.SendUserResponseAsync(
+                    detectionResult.Summary,
+                    BffWorkflowClient.AgentRegistry["triage"],
+                    cancellationToken: cancellationToken);
+
                 await _userInteractor.PublishAgentStateAsync("triage", "done", "Done", cancellationToken);
                 await _userInteractor.PublishAgentStateAsync("freq", "active", "Running", cancellationToken);
                 await _userInteractor.PublishContextAsync(
@@ -87,7 +94,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
                     await _userInteractor.PublishTraceAsync("Requesting additional information", TraceConstants.IconFileSearch, TraceConstants.ColorWarning, cancellationToken);
                     Logger.LogDebug("Need more information - asking follow-up question");
                     history.Add(new ChatMessage(ChatRole.Assistant, detectionResult.QuestionForUser));
-                    string nextUserMessage = await _userInteractor.GetUserResponseAsync(detectionResult.QuestionForUser, cancellationToken);
+                    string nextUserMessage = await _userInteractor.GetUserResponseAsync(detectionResult.QuestionForUser, BffWorkflowClient.AgentRegistry["triage"], cancellationToken: cancellationToken);
                     await _userInteractor.SetAgentTypingAsync("Triage Agent analyzing", true, cancellationToken);
                     history.Add(new ChatMessage(ChatRole.User, nextUserMessage));
                     await context.QueueStateUpdateAsync(Constants.ConversationHistoryKey, history, Constants.TriageStateScope);
