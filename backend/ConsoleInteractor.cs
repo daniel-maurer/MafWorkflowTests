@@ -46,12 +46,40 @@ public sealed class KbEntry
 }
 
 /// <summary>
+/// Visibility scope for a chat message.
+/// "both"      — shown in both the client and attendant panes (default).
+/// "client"    — shown only on the client side (single chat or user pane in split mode).
+/// "attendant" — shown only on the attendant/human-agent pane in split mode.
+/// "internal"  — never rendered as a chat bubble; useful for summaries that should only
+///               appear in the trace tab.
+/// </summary>
+public static class MessageAudience
+{
+    public const string Both = "both";
+    public const string Client = "client";
+    public const string Attendant = "attendant";
+    public const string Internal = "internal";
+}
+
+/// <summary>
+/// Special token enqueued into the session message channel when the frontend clicks
+/// "Mark as Solved". Executors waiting on user/human input observe this and resolve
+/// the current step gracefully (no terminal interaction required).
+/// </summary>
+internal static class WorkflowControlTokens
+{
+    public const string MarkResolved = "__MAF_CONTROL__:mark-resolved";
+    public const string Cancel = "__MAF_CONTROL__:cancel";
+}
+
+/// <summary>
 /// Handles user-facing interaction for the support workflow (chat, KB, traces, agent state, etc.).
 /// </summary>
 internal interface IUserInteractor
 {
-    Task<string> GetUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, CancellationToken cancellationToken = default);
-    Task SendUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, CancellationToken cancellationToken = default);
+    Task<string> GetUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
+    Task SendUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
+    Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string icon = "user-check", string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
     Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default);
     Task PublishTraceAsync(string title, string icon = "terminal", string color = "primary", CancellationToken cancellationToken = default);
     Task PublishAgentStateAsync(string agentId, string state, string tag, CancellationToken cancellationToken = default);

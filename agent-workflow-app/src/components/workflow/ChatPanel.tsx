@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
-import type { Message } from '@/types/workflow';
+import type { Message, MessageAudience } from '@/types/workflow';
 import type { WorkflowSessionApi } from '@/hooks/useWorkflowSession';
 
 interface Props {
@@ -15,6 +15,18 @@ const AV_BY_SENDER: Record<string, string> = {
   'Pattern Record Agent': 'pattern',
   human: 'human',
 };
+
+/**
+ * Returns true if a message is visible in a given pane based on its `audience`
+ * field. Defaults to "both" when the field is missing so messages from older
+ * backends keep their previous behaviour.
+ */
+function isVisibleTo(m: Message, pane: 'client' | 'attendant'): boolean {
+  const aud: MessageAudience = m.audience ?? 'both';
+  if (aud === 'internal') return false;
+  if (aud === 'both') return true;
+  return aud === pane;
+}
 
 function avClass(message: Message): string {
   if (message.senderType === 'user') return 'user';
@@ -113,9 +125,11 @@ export function ChatPanel({ session }: Props) {
                   <div className="empty-d">Type a message or pick a scenario in the right panel.</div>
                 </div>
               )}
-              {snapshot.messages.map((m) => (
-                <MessageRow key={m.id} message={m} />
-              ))}
+              {snapshot.messages
+                .filter((m) => isVisibleTo(m, 'client'))
+                .map((m) => (
+                  <MessageRow key={m.id} message={m} />
+                ))}
               {snapshot.typing.msgs && <TypingRow label={snapshot.typing.msgs} av="triage" />}
             </div>
             <div className="wf-chat-input-wrap">
@@ -168,7 +182,7 @@ export function ChatPanel({ session }: Props) {
               </div>
               <div className="wf-split-msgs" ref={userRef} data-testid="msgs-user">
                 {snapshot.messages
-                  .filter((m) => m.splitMirror || m.type === 'system')
+                  .filter((m) => (m.splitMirror || m.type === 'system') && isVisibleTo(m, 'client'))
                   .map((m) => (
                     <MessageRow key={`u-${m.id}`} message={mirrorForUserPane(m)} />
                   ))}
@@ -214,7 +228,7 @@ export function ChatPanel({ session }: Props) {
               </div>
               <div className="wf-split-msgs" ref={humanRef} data-testid="msgs-human">
                 {snapshot.messages
-                  .filter((m) => m.splitMirror || m.type === 'system')
+                  .filter((m) => (m.splitMirror || m.type === 'system') && isVisibleTo(m, 'attendant'))
                   .map((m) => (
                     <MessageRow key={`h-${m.id}`} message={mirrorForHumanPane(m)} />
                   ))}

@@ -181,6 +181,8 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Tools = Array.Empty<object>(),
             CreatedAt = DateTime.UtcNow,
             SplitMirror = true,
+            // Human-agent messages are spoken to the customer, so they belong in both panes.
+            Audience = MessageAudience.Both,
         });
         await session.EnqueueMessageAsync(command.Text);
         await PublishTraceAsync(command.SessionId, "Human message received and routed to session.", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary);
@@ -200,20 +202,29 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private async Task HandleMarkSolvedAsync(MafSessionCommand command)
     {
-        if (_sessions.TryRemove(command.SessionId, out var session))
+        // The frontend "Mark as Solved" button signals the running workflow that the
+        // human-support exchange is resolved. We enqueue a control token instead of
+        // tearing down the session, so the workflow finishes its remaining stages
+        // (Pattern Record + Done context) cleanly.
+        if (_sessions.TryGetValue(command.SessionId, out var session))
         {
-            await session.DisposeAsync();
+            await session.EnqueueMessageAsync(WorkflowControlTokens.MarkResolved);
+            await PublishTraceAsync(command.SessionId, "User marked the issue as resolved.", TraceConstants.IconUserCheck, TraceConstants.ColorSuccess);
         }
-
-        await PublishPublicEventAsync(command.SessionId, "splitMode", false);
-        await PublishContextAsync(command.SessionId, new MafContextPayload
+        else
         {
-            Status = "resolved",
-            ChatTitle = "Resolved",
-            ChatSubtitle = "The session was marked solved.",
-            ActiveAgentId = string.Empty,
-            HumanMode = false
-        });
+            // No live session — fall back to the previous behaviour so the UI still flips
+            // to a resolved state when the workflow has already completed.
+            await PublishPublicEventAsync(command.SessionId, "splitMode", false);
+            await PublishContextAsync(command.SessionId, new MafContextPayload
+            {
+                Status = "resolved",
+                ChatTitle = "Resolved",
+                ChatSubtitle = "The session was marked solved.",
+                ActiveAgentId = string.Empty,
+                HumanMode = false
+            });
+        }
     }
 
     private async Task HandleResetWorkflowAsync(MafSessionCommand command)
@@ -328,7 +339,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         };
     }
 
-    private MafMessagePayload CreateAgentMessage(string text, AgentIdentity agent, IReadOnlyList<AgentToolCall>? tools)
+    private MafMessagePayload CreateAgentMessage(string text, AgentIdentity agent, IReadOnlyList<AgentToolCall>? tools, string audience = MessageAudience.Both)
     {
         return new MafMessagePayload
         {
@@ -347,6 +358,27 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             CreatedAt = DateTime.UtcNow,
             // Default agent messages to mirror so the human-handoff split chat keeps the full history.
             SplitMirror = true,
+            Audience = audience,
+        };
+    }
+
+    private MafMessagePayload CreateSystemMessage(string text, string systemStyle, string icon, string audience)
+    {
+        return new MafMessagePayload
+        {
+            Id = GenerateId("msg"),
+            Type = "system",
+            Side = "center",
+            SenderType = "system",
+            SenderName = "System",
+            Icon = icon,
+            BubbleStyle = null!,
+            SystemStyle = systemStyle,
+            Text = text,
+            Tools = Array.Empty<object>(),
+            CreatedAt = DateTime.UtcNow,
+            SplitMirror = true,
+            Audience = audience,
         };
     }
 
@@ -439,7 +471,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         }
 
 
-        public async Task SendUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, CancellationToken cancellationToken = default)
+        public async Task SendUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
             if (IsConsolePrompt(prompt) && (tools is null || tools.Count == 0))
             {
@@ -447,10 +479,15 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             }
 
             var resolved = ResolveAgent(agent);
-            await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools));
+            await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools, audience));
         }
 
-        public async Task<string> GetUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, CancellationToken cancellationToken = default)
+        public async Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string icon = "user-check", string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
+        {
+            await _parent.PublishMessageAsync(_sessionId, _parent.CreateSystemMessage(text, systemStyle, icon, audience));
+        }
+
+        public async Task<string> GetUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
             // Some executors call GetUserResponseAsync purely to read the next user/human input
             // and pass a console-style placeholder prompt (e.g. "[ATENDENTE HUMANO] "). Those
@@ -458,7 +495,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             if (!IsConsolePrompt(prompt))
             {
                 var resolved = ResolveAgent(agent);
-                await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools));
+                await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools, audience));
             }
 
             return await _incomingMessages.Reader.ReadAsync(cancellationToken);
@@ -544,17 +581,23 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         if (outputData is TriageResult triageResult)
         {
+            // Triage outputs are internal agent-facing classifications — route them only to the
+            // attendant pane (see TriageExecutor for the rationale).
             await PublishMessageAsync(sessionId, CreateAgentMessage(
                 string.IsNullOrWhiteSpace(triageResult.Summary) ? "Issue classified." : triageResult.Summary,
-                AgentRegistry["triage"], null));
+                AgentRegistry["triage"], null, MessageAudience.Attendant));
             return;
         }
 
         if (outputData is FrequentProblemResult frequentProblemResult)
         {
+            // The Freq. Problem Agent's verdict ("Problema reconhecido" / "Encaminhando para
+            // suporte humano") is operational telemetry rather than a customer-facing reply.
+            // Keep it on the attendant side; the customer reads the Resolution / Human-Support
+            // message that follows.
             await PublishMessageAsync(sessionId, CreateAgentMessage(
                 frequentProblemResult.MessageForUser ?? "Analyzing issue against known problems.",
-                AgentRegistry["freq"], null));
+                AgentRegistry["freq"], null, MessageAudience.Attendant));
 
             if (frequentProblemResult.MatchedIssue != null)
             {
@@ -606,9 +649,10 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
         if (outputData is PatternRecordResult patternRecordResult)
         {
+            // Pattern descriptions are internal analytics, not customer-facing replies.
             await PublishMessageAsync(sessionId, CreateAgentMessage(
                 patternRecordResult.PatternDescription ?? "Pattern recorded.",
-                AgentRegistry["pattern"], null));
+                AgentRegistry["pattern"], null, MessageAudience.Attendant));
             return;
         }
 
@@ -695,6 +739,13 @@ internal sealed class MafMessagePayload
 
     [JsonPropertyName("splitMirror")]
     public bool SplitMirror { get; set; }
+
+    /// <summary>
+    /// Visibility scope used by the frontend split-pane to decide whether a message is shown
+    /// to the customer, to the human attendant, both, or neither. See <see cref="MessageAudience"/>.
+    /// </summary>
+    [JsonPropertyName("audience")]
+    public string Audience { get; set; } = MessageAudience.Both;
 }
 
 internal sealed class MafToolCallPayload

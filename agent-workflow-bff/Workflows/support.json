@@ -34,12 +34,21 @@
       "tools": ["restart_service", "reset_password", "run_diagnostic", "create_ticket"]
     },
     {
+      "id": "human-support",
+      "icon": "headphones",
+      "title": "Human Support",
+      "description": "Sarah M. — human attendant joins when no KB match or automated resolution fails.",
+      "colorTheme": "human",
+      "order": 4,
+      "tools": []
+    },
+    {
       "id": "pattern",
       "icon": "bar-chart-2",
       "title": "Pattern Record Agent",
       "description": "Records patterns and promotes repeated issues to the KB.",
       "colorTheme": "error",
-      "order": 4,
+      "order": 5,
       "tools": []
     }
   ],

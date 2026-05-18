@@ -68,6 +68,17 @@ export interface ToolCall {
   ok: boolean;
 }
 
+/**
+ * Visibility scope for a chat message.
+ * - "both"      (default) — visible in both the customer and attendant panes.
+ * - "client"    — only visible to the end customer (single chat / user pane).
+ * - "attendant" — only visible on the human-attendant pane in split mode.
+ *                 Single-chat mode hides these so the customer never sees internal
+ *                 agent classifications.
+ * - "internal"  — never rendered as a bubble (still flows into the trace tab).
+ */
+export type MessageAudience = 'both' | 'client' | 'attendant' | 'internal';
+
 export interface Message {
   id: string;
   type: 'message' | 'system' | 'typing';
@@ -82,6 +93,8 @@ export interface Message {
   createdAt: string; // ISO-8601
   /** When true the message should also appear in the human-handoff split view. */
   splitMirror?: boolean;
+  /** Visibility scope; defaults to "both" if absent so older payloads stay compatible. */
+  audience?: MessageAudience;
 }
 
 export interface TraceEvent {
