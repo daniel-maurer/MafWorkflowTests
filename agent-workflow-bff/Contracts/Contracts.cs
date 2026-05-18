@@ -76,7 +76,8 @@ public sealed record MessageDto(
     string Text,
     IReadOnlyList<ToolCallDto>? Tools,
     DateTimeOffset CreatedAt,
-    bool? SplitMirror);
+    bool? SplitMirror,
+    string? Audience = "both");
 
 public sealed record TraceEventDto(
     string Id,

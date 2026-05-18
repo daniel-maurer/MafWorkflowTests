@@ -222,31 +222,58 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
         
         await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
         await _userInteractor.PublishTraceAsync("Awaiting user confirmation on resolution", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
-        // Ask user for confirmation
-            string userConfirmation = await _userInteractor.GetUserResponseAsync("\n✓ Seu problema foi resolvido? (sim/não)", BffWorkflowClient.AgentRegistry["res"], cancellationToken: cancellationToken);
-            bool resolved = userConfirmation.ToLower() is "sim" or "s" or "yes" or "y";
-            
-            var resolutionOutcome = new ResolutionResult
+        string userConfirmation = await _userInteractor.GetUserResponseAsync("\n✓ Seu problema foi resolvido? (sim/não)", BffWorkflowClient.AgentRegistry["res"], cancellationToken: cancellationToken);
+
+        // The frontend "Mark as Solved" button arrives as a control token in the same channel.
+        // Treat it as an affirmative confirmation so Pattern Record runs and the workflow ends
+        // cleanly instead of staying stuck waiting for "sim".
+        bool markedResolvedFromFrontend = string.Equals(userConfirmation, WorkflowControlTokens.MarkResolved, StringComparison.Ordinal);
+        bool resolved = markedResolvedFromFrontend
+            || userConfirmation.Trim().ToLowerInvariant() is "sim" or "s" or "yes" or "y" or "ok" or "obrigado" or "valeu" or "resolvido";
+
+        if (resolved)
+        {
+            await _userInteractor.PublishTraceAsync("Issue resolved successfully", TraceConstants.IconUserCheck, TraceConstants.ColorSuccess, cancellationToken);
+            await _userInteractor.PublishAgentStateAsync("res", "done", "Done", cancellationToken);
+
+            var resolvedOutcome = new ResolutionResult
             {
-                IsResolved = resolved,
-                RequiresHuman = !resolved,
+                IsResolved = true,
+                RequiresHuman = false,
                 MessageForUser = userMessage,
                 ActionsExecuted = actionsExecuted,
-                EscalationReason = !resolved ? "User reported issue not resolved after automated resolution attempt" : null
+                EscalationReason = null
             };
-            
-            if (resolved)
-            {
-                await _userInteractor.PublishTraceAsync("Issue resolved successfully", TraceConstants.IconUserCheck, TraceConstants.ColorSuccess, cancellationToken);
-            }
-            else
-            {
-                await _userInteractor.PublishTraceAsync("Resolution unsuccessful, escalating to human support", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
-            }
-            
-            await context.YieldOutputAsync(resolutionOutcome, cancellationToken);
-            await _userInteractor.PublishAgentStateAsync("res", "done", "Done", cancellationToken);
+            await context.YieldOutputAsync(resolvedOutcome, cancellationToken);
             Logger.LogInfo("Resolution process completed successfully");
-            return resolutionOutcome;
+            return resolvedOutcome;
+        }
+
+        // Negative confirmation. The customer either said "não" or added extra context
+        // ("nao, eu pedi sobre vale transporte"). Either way the automated resolution
+        // didn't help — escalate to human support inline so the workflow doesn't get
+        // stuck waiting at Pattern Record. The customer's correction is published so the
+        // attendant can read the reclassification context.
+        await _userInteractor.PublishTraceAsync(
+            "Resolution unsuccessful, escalating to human support",
+            TraceConstants.IconSiren,
+            TraceConstants.ColorWarning,
+            cancellationToken);
+        await _userInteractor.PublishAgentStateAsync("res", "done", "Done", cancellationToken);
+        await _userInteractor.SendSystemMessageAsync(
+            $"Customer rejected the automated resolution: \"{userConfirmation}\". Routing back for human triage.",
+            systemStyle: "escalate",
+            icon: "siren",
+            audience: MessageAudience.Attendant,
+            cancellationToken: cancellationToken);
+
+        var humanOutcome = await HumanSupportSession.RunAsync(
+            _userInteractor,
+            handoffReason: "automated resolution rejected",
+            cancellationToken);
+
+        await context.YieldOutputAsync(humanOutcome, cancellationToken);
+        Logger.LogInfo($"Human support handoff after failed automated resolution - Issue resolved: {humanOutcome.IsResolved}");
+        return humanOutcome;
         }
     }

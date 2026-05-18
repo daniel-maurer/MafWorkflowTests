@@ -54,11 +54,22 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
         Logger.LogInfo("Starting pattern record analysis for resolved issue");
         Logger.LogDebug($"Issue resolved: {resolutionResult.IsResolved}");
 
-        // Only record patterns if issue was actually resolved
+        // Only record patterns if issue was actually resolved.
+        // When the issue was not resolved we still need to leave the pipeline in a clean
+        // terminal state — otherwise the Pattern Record card stays stuck on "Running"
+        // forever and the session looks half-complete.
         if (!resolutionResult.IsResolved)
         {
             await _userInteractor.PublishTraceAsync("Pattern recording skipped - issue not resolved", TraceConstants.IconFileSearch, TraceConstants.ColorPrimary, cancellationToken);
             Logger.LogInfo("Skipping pattern recording - issue was not resolved");
+            await _userInteractor.PublishAgentStateAsync("pattern", "done", "Skipped", cancellationToken);
+            await _userInteractor.PublishContextAsync(
+                "resolved",
+                "Session closed",
+                "Issue not resolved — pattern recording skipped.",
+                string.Empty,
+                false,
+                cancellationToken);
             return CreateEmptyResult();
         }
 

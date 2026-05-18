@@ -65,11 +65,14 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
                 Logger.LogInfo("Triage analysis complete - problem understood");
                 Logger.LogExecutorResult($"[Triagem] Resumo do Problema: {detectionResult.Summary}");
 
-                // Surface the triage classification as a Triage Agent chat bubble so the user sees
-                // it under the correct identity/icon/color (instead of a generic "MAF Agent" row).
+                // The triage summary is an internal agent-facing classification ("O cliente
+                // não recebeu o vale transporte"). Route it to the attendant audience only so
+                // the customer never sees that paraphrased summary in their pane; the customer
+                // will hear from the Resolution or Human-Support agent instead.
                 await _userInteractor.SendUserResponseAsync(
                     detectionResult.Summary,
                     BffWorkflowClient.AgentRegistry["triage"],
+                    audience: MessageAudience.Attendant,
                     cancellationToken: cancellationToken);
 
                 await _userInteractor.PublishAgentStateAsync("triage", "done", "Done", cancellationToken);
