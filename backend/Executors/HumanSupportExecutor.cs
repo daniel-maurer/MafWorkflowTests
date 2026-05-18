@@ -52,7 +52,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         Logger.OutputSystem("[ATENDENTE SUPORTE] Para encerrar o atendimento humano a qualquer momento, digite [COMPLETED] ou FINALIZAR.");
         Logger.OutputSystem(new string('=', 80));
 
-        string humanAgentResponse = await _userInteractor.GetUserResponseAsync("[ATENDENTE HUMANO] ", cancellationToken);
+        string humanAgentResponse = await _userInteractor.GetUserResponseAsync("[ATENDENTE HUMANO] ", BffWorkflowClient.AgentRegistry["human-support"], cancellationToken: cancellationToken);
         if (TryCompleteCommand(humanAgentResponse, out var completionResult))
         {
             await _userInteractor.PublishTraceAsync("Human support interaction completed", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
@@ -63,7 +63,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         Logger.OutputAgent($"[ATENDENTE HUMANO] {humanAgentResponse}");
         Logger.LogDebug($"Human agent said: {humanAgentResponse}");
 
-        string userReply = await _userInteractor.GetUserResponseAsync("[USUÁRIO] ", cancellationToken);
+        string userReply = await _userInteractor.GetUserResponseAsync("[USUÁRIO] ", BffWorkflowClient.AgentRegistry["human-support"], cancellationToken: cancellationToken);
         if (TryCompleteCommand(userReply, out completionResult))
         {
             await _userInteractor.PublishTraceAsync("Human support interaction completed", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
@@ -77,7 +77,7 @@ internal sealed class HumanSupportExecutor : Executor<FrequentProblemResult, Res
         string finalHumanResponse = humanAgentResponse;
 
         await _userInteractor.PublishTraceAsync("Awaiting user confirmation on resolution", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
-        string confirmation = await _userInteractor.GetUserResponseAsync("[USUÁRIO] (sim/não) ", cancellationToken);
+        string confirmation = await _userInteractor.GetUserResponseAsync("[USUÁRIO] (sim/não) ", BffWorkflowClient.AgentRegistry["human-support"], cancellationToken: cancellationToken);
         Logger.OutputUser($"[USUÁRIO] {confirmation}\n");
         Logger.LogDebug($"User confirmation: {confirmation}");
 
