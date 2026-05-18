@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using System.Linq;
 using System.Text.Json.Serialization;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -239,6 +240,10 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private async Task PublishAgentAsync(string sessionId, MafAgentPayload payload)
     {
         await PublishPublicEventAsync(sessionId, "agent", payload);
+    }
+    private async Task PublishKbAsync(string sessionId, IEnumerable<MafKbPayload> payload)
+    {
+        await PublishPublicEventAsync(sessionId, "kb", payload);
     }
 
     private async Task PublishTypingAsync(string sessionId, bool on, string label = "MAF Agent typing", string container = "msgs")
@@ -518,6 +523,20 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
                 CreatedAt = DateTime.UtcNow,
                 SplitMirror = false
             });
+                if (frequentProblemResult.MatchedIssue != null)
+                {
+                    var kbEntry = new MafKbPayload
+                    {
+                        Id = GenerateId("kb"),
+                        Title = frequentProblemResult.MatchedIssue.Problem,
+                        Category = string.Empty,
+                        Score = frequentProblemResult.MatchedIssue.SuccessRate,
+                        Summary = frequentProblemResult.MatchedIssue.Symptoms.FirstOrDefault() ?? frequentProblemResult.MatchedIssue.Solution ?? string.Empty,
+                        ResolutionType = frequentProblemResult.MatchedIssue.McpAction ?? "knowledge-base",
+                        Tags = frequentProblemResult.MatchedIssue.Keywords.ToArray()
+                    };
+                    await PublishKbAsync(sessionId, new[] { kbEntry });
+                }
             return;
         }
 
@@ -743,6 +762,30 @@ internal sealed class MafContextPayload
 
     [JsonPropertyName("resolutionSteps")]
     public object[]? ResolutionSteps { get; set; }
+}
+
+internal sealed class MafKbPayload
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = string.Empty;
+
+    [JsonPropertyName("score")]
+    public double Score { get; set; }
+
+    [JsonPropertyName("summary")]
+    public string Summary { get; set; } = string.Empty;
+
+    [JsonPropertyName("resolutionType")]
+    public string ResolutionType { get; set; } = string.Empty;
+
+    [JsonPropertyName("tags")]
+    public string[] Tags { get; set; } = Array.Empty<string>();
 }
 
 internal sealed class MafStartWorkflowCommand

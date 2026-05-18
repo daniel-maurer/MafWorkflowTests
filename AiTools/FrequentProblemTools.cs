@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Linq;
 
 namespace SupportWorkflow;
 
@@ -32,7 +34,7 @@ public static class FrequentProblemTools
 
             var listKnownIssues = JsonSerializer.Deserialize<List<KnownIssue>>(jsonContent) ?? [];
 
-            var result = listKnownIssues.Where(issue => 
+            var result = listKnownIssues.Where(issue =>
                 issue.Keywords.Any(kw => keyWords.Contains(kw, StringComparer.OrdinalIgnoreCase))).ToList();
 
             return result;
@@ -41,6 +43,77 @@ public static class FrequentProblemTools
         {
             throw new InvalidOperationException($"Failed to parse known_issues.json: {ex.Message}", ex);
         }
+    }
+
+    /// <summary>
+    /// Retrieves matched known issues and converts them into the KB payload schema used by the workflow.
+    /// </summary>
+    /// <param name="keyWords">List of keywords to search for known issues.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of KB payload entries for matching known issues.</returns>
+    [Description("Get knowledge base reference entries for a given set of keywords.")]
+    public static async Task<List<KnowledgeBaseEntry>> GetKnownIssueReferencesAsync(
+        [Description("The keywords to search for known issues.")] List<string> keyWords,
+        CancellationToken cancellationToken = default)
+    {
+        var matchingIssues = await GetKnownIssuesAsync(keyWords, cancellationToken);
+        return matchingIssues.Select(CreateKnowledgeBaseEntry).ToList();
+    }
+
+    private static KnowledgeBaseEntry CreateKnowledgeBaseEntry(KnownIssue issue)
+    {
+        return new KnowledgeBaseEntry
+        {
+            Id = GenerateReferenceId(issue.Problem),
+            Title = issue.Problem,
+            Category = string.Empty,
+            Score = issue.SuccessRate,
+            Summary = issue.Symptoms.FirstOrDefault() ?? issue.Solution ?? issue.Problem,
+            ResolutionType = string.IsNullOrWhiteSpace(issue.McpAction) ? "knowledge-base" : issue.McpAction,
+            Tags = issue.Keywords.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+        };
+    }
+
+    private static string GenerateReferenceId(string problem)
+    {
+        if (string.IsNullOrWhiteSpace(problem))
+        {
+            return "kb_unknown";
+        }
+
+        var normalized = string.Concat(problem
+            .ToLowerInvariant()
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ')
+            .Select(c => c == ' ' ? '-' : c));
+        normalized = normalized.Trim('-');
+        return string.IsNullOrEmpty(normalized) ? "kb_unknown" : $"kb_{normalized}";
+    }
+
+    /// <summary>
+    /// Represents a knowledge base entry payload for KB event publishing.
+    /// </summary>
+    public sealed class KnowledgeBaseEntry
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = string.Empty;
+
+        [JsonPropertyName("category")]
+        public string Category { get; set; } = string.Empty;
+
+        [JsonPropertyName("score")]
+        public double Score { get; set; }
+
+        [JsonPropertyName("summary")]
+        public string Summary { get; set; } = string.Empty;
+
+        [JsonPropertyName("resolutionType")]
+        public string ResolutionType { get; set; } = string.Empty;
+
+        [JsonPropertyName("tags")]
+        public List<string> Tags { get; set; } = new List<string>();
     }
 
     /// <summary>
