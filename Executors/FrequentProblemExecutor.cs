@@ -38,6 +38,15 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
     {
         var summary = triageResult.Summary;
 
+            await _userInteractor.PublishAgentStateAsync("freq", "active", "Running", cancellationToken);
+            await _userInteractor.PublishContextAsync(
+                "searching-kb",
+                "Knowledge base search",
+                "Searching knowledge base for known issues.",
+                "freq",
+                false,
+                cancellationToken);
+
         if (string.IsNullOrEmpty(triageResult.Summary))
         {
             throw new InvalidOperationException("No problem summary found in triage result.");
@@ -67,6 +76,15 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
             // If it's known and not complex, route to resolution; otherwise route to human support
             if (frequentProblemResult.IsKnown)
             {
+                    await _userInteractor.PublishAgentStateAsync("freq", "done", "Done", cancellationToken);
+                    await _userInteractor.PublishAgentStateAsync("resolution", "active", "Running", cancellationToken);
+                    await _userInteractor.PublishContextAsync(
+                        "resolving",
+                        "Automated resolution",
+                        "Attempting automated resolution.",
+                        "resolution",
+                        false,
+                        cancellationToken);
                 // If known, try to load the full issue details from the knowledge base
                 if (string.IsNullOrEmpty(frequentProblemResult.MessageForUser) == false)
                 {
@@ -100,6 +118,16 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
             }
             
             // For unknown or complex problems, return the result to route to human support
+                await _userInteractor.PublishAgentStateAsync("freq", "done", "Done", cancellationToken);
+                await _userInteractor.PublishAgentStateAsync("human-support", "active", "Waiting", cancellationToken);
+                await _userInteractor.PublishContextAsync(
+                    "human-chat",
+                    "Human handoff",
+                    "Escalating to human support.",
+                    "human-support",
+                    true,
+                    cancellationToken);
+                await _userInteractor.PublishSplitModeAsync(true, cancellationToken);
             await _userInteractor.PublishTraceAsync("Unknown or complex problem, routing to human support", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
             await context.YieldOutputAsync(frequentProblemResult, cancellationToken);
             return frequentProblemResult;

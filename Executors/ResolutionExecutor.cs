@@ -34,14 +34,21 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
     /// <returns>A ResolutionResult indicating if resolution was successful</returns>
     public override async ValueTask<ResolutionResult> HandleAsync(FrequentProblemResult frequentProblemResult, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
-        if (frequentProblemResult == null)
-        {
-            throw new ArgumentNullException(nameof(frequentProblemResult), "FrequentProblemResult cannot be null");
-        }
+
+
+        var history = await context.ReadStateAsync<List<ChatMessage>>(Constants.ConversationHistoryKey, Constants.TriageStateScope) ?? new List<ChatMessage>();
 
         Logger.LogInfo("Starting resolution process...");
         Logger.LogDebug($"Problem - IsKnown: {frequentProblemResult.IsKnown}");
         Logger.LogDebug($"Problem Details: {frequentProblemResult.MessageForUser}");
+        await _userInteractor.PublishAgentStateAsync("res", "active", "Running", cancellationToken);
+        await _userInteractor.PublishContextAsync(
+            "resolving",
+            "Resolving issue",
+            "Attempting automated resolution.",
+            "resolution",
+            false,
+            cancellationToken);
         await _userInteractor.PublishTraceAsync("Starting resolution attempt", TraceConstants.IconWrench, TraceConstants.ColorPrimary, cancellationToken);
         await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", true, cancellationToken);
         
@@ -52,6 +59,16 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
         {
             await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
             await _userInteractor.PublishTraceAsync("Problem not recognized, escalating to human support", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
+            await _userInteractor.PublishAgentStateAsync("res", "done", "Done", cancellationToken);
+            await _userInteractor.PublishAgentStateAsync("human-support", "active", "Waiting", cancellationToken);
+            await _userInteractor.PublishContextAsync(
+                "human-chat",
+                "Human handoff",
+                "Escalating to human support.",
+                "human-support",
+                true,
+                cancellationToken);
+            await _userInteractor.PublishSplitModeAsync(true, cancellationToken);
             var escalationResult = new ResolutionResult
             {
                 IsResolved = false,
@@ -70,6 +87,16 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
         {
             await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
             await _userInteractor.PublishTraceAsync("No solution found for known issue, escalating to human support", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
+            await _userInteractor.PublishAgentStateAsync("res", "done", "Done", cancellationToken);
+            await _userInteractor.PublishAgentStateAsync("human-support", "active", "Waiting", cancellationToken);
+            await _userInteractor.PublishContextAsync(
+                "human-chat",
+                "Human handoff",
+                "Escalating to human support.",
+                "human-support",
+                true,
+                cancellationToken);
+            await _userInteractor.PublishSplitModeAsync(true, cancellationToken);
             var escalationResult = new ResolutionResult
             {
                 IsResolved = false,
@@ -94,6 +121,10 @@ internal sealed class ResolutionExecutor : Executor<FrequentProblemResult, Resol
             {
                 userMessage = "Estamos trabalhando para resolver seu problema. Por favor, aguarde um momento.";
             }
+            // here TODO
+            history.Add(new ChatMessage(ChatRole.User, userMessage));
+            await _userInteractor.SendUserResponseAsync(userMessage, cancellationToken);
+
 
             Logger.OutputAgent($"\n{userMessage}");
             actionsExecuted.AddRange(toolsToCall);
@@ -202,6 +233,7 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
             }
             
             await context.YieldOutputAsync(resolutionOutcome, cancellationToken);
+            await _userInteractor.PublishAgentStateAsync("res", "done", "Done", cancellationToken);
             Logger.LogInfo("Resolution process completed successfully");
             return resolutionOutcome;
         }

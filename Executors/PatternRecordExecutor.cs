@@ -42,6 +42,15 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
             throw new ArgumentNullException(nameof(resolutionResult), "ResolutionResult cannot be null");
         }
 
+        await _userInteractor.PublishAgentStateAsync("pattern", "active", "Running", cancellationToken);
+        await _userInteractor.PublishContextAsync(
+            "recording",
+            "Recording pattern",
+            "Recording the resolution pattern for future automation.",
+            "pattern",
+            false,
+            cancellationToken);
+
         Logger.LogInfo("Starting pattern record analysis for resolved issue");
         Logger.LogDebug($"Issue resolved: {resolutionResult.IsResolved}");
 
@@ -90,6 +99,14 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
 
                 await _userInteractor.PublishTraceAsync("Pattern analysis complete, recording to knowledge base", TraceConstants.IconBookOpen, TraceConstants.ColorSuccess, cancellationToken);
                 await context.YieldOutputAsync(patternResult, cancellationToken);
+                await _userInteractor.PublishAgentStateAsync("pattern", "done", "Done", cancellationToken);
+                await _userInteractor.PublishContextAsync(
+                    "resolved",
+                    "Session Resolved ✓",
+                    "Issue resolved and pattern recorded.",
+                    "pattern",
+                    false,
+                    cancellationToken);
                 return patternResult;
             }
             else

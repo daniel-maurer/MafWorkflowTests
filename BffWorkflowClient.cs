@@ -390,6 +390,26 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             _parent = parent;
         }
 
+
+        public async Task SendUserResponseAsync(string prompt, CancellationToken cancellationToken = default)
+        {
+            await _parent.PublishMessageAsync(_sessionId, new MafMessagePayload
+            {
+                Id = GenerateId("msg"),
+                Type = "message",
+                Side = "left",
+                SenderType = "agent",
+                SenderName = "MAF Agent",
+                Icon = "git-branch",
+                BubbleStyle = "agent",
+                SystemStyle = null,
+                Text = prompt,
+                Tools = Array.Empty<object>(),
+                CreatedAt = DateTime.UtcNow,
+                SplitMirror = false
+            });
+        }
+
         public async Task<string> GetUserResponseAsync(string prompt, CancellationToken cancellationToken = default)
         {
             await _parent.PublishMessageAsync(_sessionId, new MafMessagePayload
@@ -419,6 +439,28 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         public async Task PublishTraceAsync(string title, string icon = "terminal", string color = "primary", CancellationToken cancellationToken = default)
         {
             await _parent.PublishTraceAsync(_sessionId, title, icon, color);
+        }
+
+        public async Task PublishAgentStateAsync(string agentId, string state, string tag, CancellationToken cancellationToken = default)
+        {
+            await _parent.PublishAgentStateAsync(_sessionId, agentId, state, tag);
+        }
+
+        public async Task PublishContextAsync(string status, string chatTitle, string chatSubtitle, string activeAgentId, bool humanMode, CancellationToken cancellationToken = default)
+        {
+            await _parent.PublishContextAsync(_sessionId, new MafContextPayload
+            {
+                Status = status,
+                ChatTitle = chatTitle,
+                ChatSubtitle = chatSubtitle,
+                ActiveAgentId = activeAgentId,
+                HumanMode = humanMode
+            });
+        }
+
+        public async Task PublishSplitModeAsync(bool on, CancellationToken cancellationToken = default)
+        {
+            await _parent.PublishPublicEventAsync(_sessionId, "splitMode", on);
         }
 
         public async Task<string> ReadNextMessageAsync(CancellationToken cancellationToken = default)
@@ -496,38 +538,6 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
                 CreatedAt = DateTime.UtcNow,
                 SplitMirror = false
             });
-
-            if (resolutionResult.IsResolved)
-            {
-                await PublishAgentStateAsync(sessionId, "resolution", "done", "Done");
-                await PublishContextAsync(sessionId, new MafContextPayload
-                {
-                    Status = "resolved",
-                    ChatTitle = "Issue resolved",
-                    ChatSubtitle = "The workflow resolved the issue.",
-                    ActiveAgentId = "resolution",
-                    HumanMode = false
-                });
-                return;
-            }
-
-            if (resolutionResult.RequiresHuman)
-            {
-                await PublishAgentStateAsync(sessionId, "resolution", "done", "Done");
-                await PublishAgentStateAsync(sessionId, "human-support", "active", "Waiting");
-                await PublishContextAsync(sessionId, new MafContextPayload
-                {
-                    Status = "human-chat",
-                    ChatTitle = "Handoff to human support",
-                    ChatSubtitle = "A human specialist is required.",
-                    ActiveAgentId = "human-support",
-                    HumanMode = true
-                });
-                await PublishPublicEventAsync(sessionId, "splitMode", true);
-                return;
-            }
-
-            return;
         }
 
         if (outputData is string text)
@@ -543,6 +553,26 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
                 BubbleStyle = "agent",
                 SystemStyle = null,
                 Text = text,
+                Tools = Array.Empty<object>(),
+                CreatedAt = DateTime.UtcNow,
+                SplitMirror = false
+            });
+            return;
+        }
+
+        if (outputData is PatternRecordResult patternRecordResult)
+        {
+            await PublishMessageAsync(sessionId, new MafMessagePayload
+            {
+                Id = GenerateId("msg"),
+                Type = "message",
+                Side = "left",
+                SenderType = "agent",
+                SenderName = "Pattern Record Agent",
+                Icon = "bar-chart-2",
+                BubbleStyle = "pattern",
+                SystemStyle = null,
+                Text = patternRecordResult.PatternDescription ?? "Pattern recorded.",
                 Tools = Array.Empty<object>(),
                 CreatedAt = DateTime.UtcNow,
                 SplitMirror = false

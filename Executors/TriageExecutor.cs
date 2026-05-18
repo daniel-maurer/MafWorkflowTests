@@ -65,6 +65,16 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
                 Logger.LogInfo("Triage analysis complete - problem understood");
                 Logger.LogExecutorResult($"[Triagem] Resumo do Problema: {detectionResult.Summary}");
 
+                await _userInteractor.PublishAgentStateAsync("triage", "done", "Done", cancellationToken);
+                await _userInteractor.PublishAgentStateAsync("freq", "active", "Running", cancellationToken);
+                await _userInteractor.PublishContextAsync(
+                    "searching-kb",
+                    "Searching knowledge base",
+                    "Searching knowledge base for known solutions.",
+                    "freq",
+                    false,
+                    cancellationToken);
+
                 await context.YieldOutputAsync(detectionResult.Summary, cancellationToken);
 
                 return detectionResult;
