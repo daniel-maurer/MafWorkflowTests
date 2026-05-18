@@ -49,3 +49,14 @@ publish/
 *.model
 
 .fake
+
+# Node and frontend artifacts
+node_modules/
+**/node_modules/
+
+# agent-workflow-app build/dev artifacts
+agent-workflow-app/node_modules/
+agent-workflow-app/dist/
+agent-workflow-app/.vite/
+agent-workflow-app/build/
+agent-workflow-app/.env.local
