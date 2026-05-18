@@ -1,0 +1,85 @@
+{
+  "id": "support",
+  "title": "Support Workflow",
+  "subtitle": "Multi-Agent Support — Microsoft Agent Framework",
+  "description": "Triage, KB search, automated resolution, and human handoff for end-user support tickets.",
+  "icon": "layers",
+  "colorTheme": "primary",
+  "agents": [
+    {
+      "id": "triage",
+      "icon": "git-branch",
+      "title": "Triage Agent",
+      "description": "Classifies the user's problem and routes to the right agent.",
+      "colorTheme": "primary",
+      "order": 1,
+      "tools": []
+    },
+    {
+      "id": "freq",
+      "icon": "database",
+      "title": "Frequent Problem Agent",
+      "description": "Searches KB for known issues. Routes to human when no match.",
+      "colorTheme": "warning",
+      "order": 2,
+      "tools": []
+    },
+    {
+      "id": "res",
+      "icon": "wrench",
+      "title": "Resolution Agent",
+      "description": "Executes automated tools to resolve known issues.",
+      "colorTheme": "success",
+      "order": 3,
+      "tools": ["restart_service", "reset_password", "run_diagnostic", "create_ticket"]
+    },
+    {
+      "id": "pattern",
+      "icon": "bar-chart-2",
+      "title": "Pattern Record Agent",
+      "description": "Records patterns and promotes repeated issues to the KB.",
+      "colorTheme": "error",
+      "order": 4,
+      "tools": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "known",
+      "title": "Known issue",
+      "label": "Can't login",
+      "description": "Authentication problem with KB match and automatic resolution.",
+      "message": "I can't log in to the system. My password is not working.",
+      "flowType": "known"
+    },
+    {
+      "id": "human",
+      "title": "Unknown",
+      "label": "Human handoff",
+      "description": "Unknown integration issue escalated to a human agent.",
+      "message": "Getting error 0xTISS-4821 during integration sync, never seen this before.",
+      "flowType": "human-handoff"
+    }
+  ],
+  "capabilities": {
+    "humanHandoff": true,
+    "knowledgeBase": true,
+    "tracing": true
+  },
+  "maf": {
+    "workflowName": "SupportWorkflow",
+    "version": "1.0",
+    "inputSchema": "support-ticket-v1"
+  },
+  "fixedKnowledgeBase": [
+    {
+      "id": "kb_001",
+      "title": "Login failure — password reset",
+      "category": "Auth",
+      "score": 0.97,
+      "summary": "User unable to access account. Resolution: trigger password reset flow via admin panel.",
+      "resolutionType": "password-reset",
+      "tags": ["login", "password", "auth"]
+    }
+  ]
+}

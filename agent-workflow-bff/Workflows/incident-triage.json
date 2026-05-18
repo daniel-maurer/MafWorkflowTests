@@ -1,0 +1,58 @@
+{
+  "id": "incident-triage",
+  "title": "Incident Triage",
+  "subtitle": "Live production incident classification",
+  "description": "Classifies inbound incident reports, runs diagnostic playbooks, and dispatches to on-call when needed.",
+  "icon": "siren",
+  "colorTheme": "error",
+  "agents": [
+    {
+      "id": "parser",
+      "icon": "file-search",
+      "title": "Parser",
+      "description": "Extracts incident metadata from free-text reports.",
+      "colorTheme": "primary",
+      "order": 1,
+      "tools": []
+    },
+    {
+      "id": "classifier",
+      "icon": "tag",
+      "title": "Classifier",
+      "description": "Assigns severity and component tags.",
+      "colorTheme": "warning",
+      "order": 2,
+      "tools": []
+    },
+    {
+      "id": "oncall",
+      "icon": "user-check",
+      "title": "On-Call Dispatcher",
+      "description": "Pages the right rotation if severity ≥ SEV-2.",
+      "colorTheme": "error",
+      "order": 3,
+      "tools": ["page_oncall", "open_warroom"]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "sev1",
+      "title": "SEV-1",
+      "label": "Database outage",
+      "description": "Primary DB cluster unreachable, page on-call immediately.",
+      "message": "Primary Postgres cluster is unreachable from app servers, 100% error rate.",
+      "flowType": "human-handoff"
+    }
+  ],
+  "capabilities": {
+    "humanHandoff": true,
+    "knowledgeBase": false,
+    "tracing": true
+  },
+  "maf": {
+    "workflowName": "IncidentTriageWorkflow",
+    "version": "1.0",
+    "inputSchema": "incident-report-v1"
+  },
+  "fixedKnowledgeBase": []
+}
