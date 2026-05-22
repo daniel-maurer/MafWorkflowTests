@@ -25,7 +25,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
         var history = await context.ReadStateAsync<List<ChatMessage>>(Constants.ConversationHistoryKey, Constants.TriageStateScope) ?? new List<ChatMessage>();
         history.Add(new ChatMessage(ChatRole.User, userMessage));
 
-        await _userInteractor.PublishTraceAsync("Starting triage analysis", TraceConstants.IconTerminal, TraceConstants.ColorPrimary, cancellationToken);
+        await _userInteractor.PublishTraceAsync("Starting triage analysis", "info", cancellationToken);
 
         Logger.LogInfo("Starting triage analysis for user message");
         Logger.LogDebug($"User message: {userMessage}");
@@ -37,7 +37,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
         while (!isUnderstood && clarificationAttempts <= MaxClarificationAttempts)
         {
             await _userInteractor.SetAgentTypingAsync("Triage Agent analyzing", true, cancellationToken);
-            await _userInteractor.PublishTraceAsync("Analyzing user message", TraceConstants.IconGitBranch, TraceConstants.ColorPrimary, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Analyzing user message", "info", cancellationToken);
             var response = await this._triageAgent.RunAsync(history, cancellationToken: cancellationToken);
 
             if (!AgentResponseParser.TryDeserializeAgentResponse(response.Text, out TriageResult? detectionResult))
@@ -54,7 +54,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
             if (detectionResult.IsUnderstood)
             {
                 await _userInteractor.SetAgentTypingAsync("Triage Agent analyzing", false, cancellationToken);
-                await _userInteractor.PublishTraceAsync("Problem understood", TraceConstants.IconUserCheck, TraceConstants.ColorSuccess, cancellationToken);
+                await _userInteractor.PublishTraceAsync("Problem understood", "success", cancellationToken);
                 history.Add(new ChatMessage(ChatRole.Assistant, detectionResult.Summary));
 
                 await context.QueueStateUpdateAsync(Constants.ConversationHistoryKey, history, Constants.TriageStateScope);
@@ -66,7 +66,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
 
                 await _userInteractor.SendUserResponseAsync(
                     detectionResult.Summary,
-                    BffWorkflowClient.AgentRegistry["triage"],
+                    "triage",
                     audience: MessageAudience.Attendant,
                     cancellationToken: cancellationToken);
 
@@ -85,10 +85,10 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
             }
 
             await _userInteractor.SetAgentTypingAsync("Triage Agent analyzing", false, cancellationToken);
-            await _userInteractor.PublishTraceAsync("Requesting additional information", TraceConstants.IconFileSearch, TraceConstants.ColorWarning, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Requesting additional information", "warning", cancellationToken);
             Logger.LogDebug("Need more information - asking follow-up question");
             history.Add(new ChatMessage(ChatRole.Assistant, detectionResult.QuestionForUser));
-            string nextUserMessage = await _userInteractor.GetUserResponseAsync(detectionResult.QuestionForUser, BffWorkflowClient.AgentRegistry["triage"], cancellationToken: cancellationToken);
+            string nextUserMessage = await _userInteractor.GetUserResponseAsync(detectionResult.QuestionForUser, "triage", cancellationToken: cancellationToken);
             await _userInteractor.SetAgentTypingAsync("Triage Agent analyzing", true, cancellationToken);
             history.Add(new ChatMessage(ChatRole.User, nextUserMessage));
             await context.QueueStateUpdateAsync(Constants.ConversationHistoryKey, history, Constants.TriageStateScope);
@@ -96,7 +96,7 @@ internal sealed class TriageExecutor : Executor<string, TriageResult>
         }
 
         Logger.LogWarning("Triage clarification limit reached. Escalating to human support with best-effort summary.");
-        await _userInteractor.PublishTraceAsync("Unable to classify issue after multiple clarifications", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
+        await _userInteractor.PublishTraceAsync("Unable to classify issue after multiple clarifications", "warning", cancellationToken);
         var fallbackResult = new TriageResult
         {
             IsUnderstood = true,

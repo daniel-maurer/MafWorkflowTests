@@ -115,6 +115,27 @@ public sealed record MafHumanMessageCommand(string SessionId, string Text);
 public sealed record MafRunScenarioCommand(string SessionId, string ScenarioId);
 public sealed record MafSessionCommand(string SessionId);
 
+/// <summary>
+/// Slim trace event sent by the backend (semantic only, no presentation).
+/// </summary>
+public sealed record BackendTraceEventDto(string Id, DateTimeOffset Time, string Title, string Level);
+
+/// <summary>
+/// Slim message sent by the backend (no agent presentation data).
+/// </summary>
+public sealed record BackendMessageDto(
+    string Id,
+    string Type,
+    string Side,
+    string SenderType,
+    string? AgentId,
+    string? SystemStyle,
+    string Text,
+    IReadOnlyList<ToolCallDto>? Tools,
+    DateTimeOffset CreatedAt,
+    bool? SplitMirror,
+    string? Audience = "both");
+
 public sealed record MafWorkflowEventEnvelope(
     string SessionId,
     string EventType,

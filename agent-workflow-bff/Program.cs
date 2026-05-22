@@ -215,3 +215,6 @@ app.MapHub<MafBridgeHub>("/hubs/maf").RequireAuthorization();
 app.MapGet("/", () => Results.Redirect("/swagger"));
 
 app.Run();
+
+public partial class Program { }
+

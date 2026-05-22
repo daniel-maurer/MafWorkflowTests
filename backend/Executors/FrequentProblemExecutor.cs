@@ -56,12 +56,12 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
 
         var history = new List<string> { currentProblem };
         string agentInput = $"Problema do Usuário: {string.Join("\n", history)}";
-        await _userInteractor.PublishTraceAsync("Starting frequent problem analysis", TraceConstants.IconFileSearch, TraceConstants.ColorPrimary, cancellationToken);
+        await _userInteractor.PublishTraceAsync("Starting frequent problem analysis", "info", cancellationToken);
         await _userInteractor.SetAgentTypingAsync("Frequent Problem Agent searching", true, cancellationToken);
         
         try
         {
-            await _userInteractor.PublishTraceAsync("Searching knowledge base for known issues", TraceConstants.IconDatabase, TraceConstants.ColorPrimary, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Searching knowledge base for known issues", "info", cancellationToken);
             var response = await this._frequentProblemAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
             
             if (!AgentResponseParser.TryDeserializeAgentResponse(response.Text, out FrequentProblemResult? frequentProblemResult))
@@ -87,7 +87,7 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                 // If known, try to load the full issue details from the knowledge base
                 if (string.IsNullOrEmpty(frequentProblemResult.MessageForUser) == false)
                 {
-                    await _userInteractor.PublishTraceAsync("Matching issue found, loading details", TraceConstants.IconTag, TraceConstants.ColorSuccess, cancellationToken);
+                    await _userInteractor.PublishTraceAsync("Matching issue found, loading details", "success", cancellationToken);
                     
                     KnownIssue? matchedIssue = null;
                     var allIssues = await KnowledgeBasePersistence.ReadKnownIssuesAsync(cancellationToken);
@@ -143,7 +143,7 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                     }
                     else
                     {
-                        await _userInteractor.PublishTraceAsync("No matching issue found in knowledge base", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
+                        await _userInteractor.PublishTraceAsync("No matching issue found in knowledge base", "warning", cancellationToken);
                         Logger.LogExecutorResult("[Problemas Frequentes] Nenhuma issue conhecida corresponde ao problema identificado. Encaminhando para suporte humano.");
 
                         frequentProblemResult.IsKnown = false;
@@ -170,13 +170,13 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                     true,
                     cancellationToken);
                 await _userInteractor.PublishSplitModeAsync(true, cancellationToken);
-            await _userInteractor.PublishTraceAsync("Unknown or complex problem, routing to human support", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Unknown or complex problem, routing to human support", "info", cancellationToken);
             await context.YieldOutputAsync(frequentProblemResult, cancellationToken);
             return frequentProblemResult;
         }
         catch (Exception ex)
         {
-            await _userInteractor.PublishTraceAsync("Error during frequent problem analysis", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Error during frequent problem analysis", "error", cancellationToken);
             Logger.LogError($"Frequent Problem Executor exception: {ex.GetType().Name} - {ex.Message}");
             
             var errorResult = new FrequentProblemResult

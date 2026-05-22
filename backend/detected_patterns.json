@@ -2,9 +2,9 @@
   {
     "id": "8c613478-45aa-4bfc-ac09-e92f1ecda863",
     "pattern_description": "O cliente não recebeu o vale transporte esperado.",
-    "frequency": 14,
+    "frequency": 17,
     "first_detected": "2026-05-18T14:34:10.8226501Z",
-    "last_detected": "2026-05-22T11:15:23.7770766Z",
+    "last_detected": "2026-05-22T20:01:42.8427615Z",
     "example_symptoms": [
       "Cliente reclama da não recepção do vale transporte",
       "Cliente questiona sobre o atraso no pagamento do vale transporte",

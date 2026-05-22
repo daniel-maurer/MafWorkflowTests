@@ -205,8 +205,8 @@ public sealed class InMemorySessionRegistry(IWorkflowConfigStore configs) : ISes
 
         _sessions[envelope.SessionId] = envelope.EventType switch
         {
-            "message" when envelope.Payload is JsonElement json => snapshot with { Messages = snapshot.Messages.Append(json.Deserialize<MessageDto>(JsonOptions)!).ToArray() },
-            "trace" when envelope.Payload is JsonElement json => snapshot with { Trace = snapshot.Trace.Append(json.Deserialize<TraceEventDto>(JsonOptions)!).ToArray() },
+            "message" when envelope.Payload is JsonElement json => EnrichAndAppendMessage(snapshot, json),
+            "trace" when envelope.Payload is JsonElement json => EnrichAndAppendTrace(snapshot, json),
             "agent" when envelope.Payload is JsonElement json => UpsertAgent(snapshot, json.Deserialize<AgentRuntimeStateDto>(JsonOptions)!),
             "kb" when envelope.Payload is JsonElement json => snapshot with { Kb = json.Deserialize<IReadOnlyList<KbItemDto>>(JsonOptions) ?? [] },
             "context" when envelope.Payload is JsonElement json => ApplyContextPatch(snapshot, json),
@@ -243,6 +243,26 @@ public sealed class InMemorySessionRegistry(IWorkflowConfigStore configs) : ISes
             Intent = GetString("intent", snapshot.Intent),
             HumanMode = GetBool("humanMode", snapshot.HumanMode)
         };
+    }
+
+    private SessionSnapshotDto EnrichAndAppendMessage(SessionSnapshotDto snapshot, JsonElement json)
+    {
+        var backend = json.Deserialize<BackendMessageDto>(JsonOptions);
+        if (backend is null) return snapshot;
+
+        var workflow = configs.GetByIdAsync(snapshot.WorkflowId, CancellationToken.None).GetAwaiter().GetResult();
+        var enriched = TracePresentation.EnrichMessage(backend, workflow);
+        return snapshot with { Messages = snapshot.Messages.Append(enriched).ToArray() };
+    }
+
+    private static SessionSnapshotDto EnrichAndAppendTrace(SessionSnapshotDto snapshot, JsonElement json)
+    {
+        var backend = json.Deserialize<BackendTraceEventDto>(JsonOptions);
+        if (backend is null) return snapshot;
+
+        var (icon, color) = TracePresentation.FromLevel(backend.Level);
+        var enriched = new TraceEventDto(backend.Id, backend.Time, icon, color, backend.Title, null, backend.Level);
+        return snapshot with { Trace = snapshot.Trace.Append(enriched).ToArray() };
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -282,7 +302,11 @@ public sealed class MafCommandPublisher(IHubContext<MafBridgeHub> hubContext, IL
     }
 }
 
-public sealed class FrontendEventPublisher(IHubContext<FrontendWorkflowHub> hubContext, ILogger<FrontendEventPublisher> logger) : IFrontendEventPublisher
+public sealed class FrontendEventPublisher(
+    IHubContext<FrontendWorkflowHub> hubContext,
+    ISessionRegistry sessionRegistry,
+    IWorkflowConfigStore configs,
+    ILogger<FrontendEventPublisher> logger) : IFrontendEventPublisher
 {
     private readonly ILogger<FrontendEventPublisher> _logger = logger;
     private readonly IHubContext<FrontendWorkflowHub> _hubContext = hubContext;
@@ -292,8 +316,8 @@ public sealed class FrontendEventPublisher(IHubContext<FrontendWorkflowHub> hubC
         _logger.LogInformation("SignalR publishing MAF event SessionId={SessionId} EventType={EventType} PayloadType={PayloadType}", envelope.SessionId, envelope.EventType, envelope.Payload?.GetType().Name);
         return envelope.EventType switch
         {
-            "message" => _hubContext.Clients.Group(envelope.SessionId).SendAsync("message", envelope.SessionId, envelope.Payload, cancellationToken),
-            "trace" => _hubContext.Clients.Group(envelope.SessionId).SendAsync("trace", envelope.SessionId, envelope.Payload, cancellationToken),
+            "message" when envelope.Payload is not null => ForwardEnrichedMessageAsync(envelope.SessionId, envelope.Payload, cancellationToken),
+            "trace" when envelope.Payload is not null => ForwardEnrichedTraceAsync(envelope.SessionId, envelope.Payload, cancellationToken),
             "agent" => _hubContext.Clients.Group(envelope.SessionId).SendAsync("agent", envelope.SessionId, envelope.Payload, cancellationToken),
             "kb" => _hubContext.Clients.Group(envelope.SessionId).SendAsync("kb", envelope.SessionId, envelope.Payload, cancellationToken),
             "context" => _hubContext.Clients.Group(envelope.SessionId).SendAsync("context", envelope.SessionId, envelope.Payload, cancellationToken),
@@ -305,6 +329,39 @@ public sealed class FrontendEventPublisher(IHubContext<FrontendWorkflowHub> hubC
 
     private Task ForwardTypingAsync(string sessionId, TypingEventDto typing, CancellationToken cancellationToken) =>
         _hubContext.Clients.Group(sessionId).SendAsync("typing", sessionId, typing.Container, typing.Label, typing.On, cancellationToken);
+
+    private Task ForwardEnrichedMessageAsync(string sessionId, object payload, CancellationToken cancellationToken)
+    {
+        if (payload is JsonElement json)
+        {
+            var backend = json.Deserialize<BackendMessageDto>(JsonOptions);
+            if (backend is not null)
+            {
+                var snapshot = sessionRegistry.GetSnapshot(sessionId);
+                var workflowId = snapshot?.WorkflowId ?? "support";
+                var workflow = configs.GetByIdAsync(workflowId, cancellationToken).GetAwaiter().GetResult();
+                var enriched = TracePresentation.EnrichMessage(backend, workflow);
+                return _hubContext.Clients.Group(sessionId).SendAsync("message", sessionId, enriched, cancellationToken);
+            }
+        }
+        return _hubContext.Clients.Group(sessionId).SendAsync("message", sessionId, payload, cancellationToken);
+    }
+
+    private Task ForwardEnrichedTraceAsync(string sessionId, object payload, CancellationToken cancellationToken)
+    {
+        if (payload is JsonElement json)
+        {
+            var backend = json.Deserialize<BackendTraceEventDto>(JsonOptions);
+            if (backend is not null)
+            {
+                var (icon, color) = TracePresentation.FromLevel(backend.Level);
+                var enriched = new TraceEventDto(backend.Id, backend.Time, icon, color, backend.Title, null, backend.Level);
+                return _hubContext.Clients.Group(sessionId).SendAsync("trace", sessionId, enriched, cancellationToken);
+            }
+        }
+        // Fallback: forward as-is (payload might already be a TraceEventDto)
+        return _hubContext.Clients.Group(sessionId).SendAsync("trace", sessionId, payload, cancellationToken);
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

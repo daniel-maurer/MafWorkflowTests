@@ -1,27 +1,6 @@
 namespace SupportWorkflow;
 
 /// <summary>
-/// Identity of an agent for chat-message rendering on the frontend.
-/// </summary>
-public sealed class AgentIdentity
-{
-    public string Id { get; init; } = string.Empty;
-    public string Name { get; init; } = "MAF Agent";
-    public string Icon { get; init; } = "git-branch";
-    public string BubbleStyle { get; init; } = "agent";
-    public string ColorTheme { get; init; } = "primary";
-
-    public static readonly AgentIdentity Default = new()
-    {
-        Id = "maf",
-        Name = "MAF Agent",
-        Icon = "git-branch",
-        BubbleStyle = "agent",
-        ColorTheme = "primary",
-    };
-}
-
-/// <summary>
 /// Represents a single tool invocation produced by an agent, surfaced inline next to its chat message.
 /// </summary>
 public sealed class AgentToolCall
@@ -77,11 +56,11 @@ internal static class WorkflowControlTokens
 /// </summary>
 internal interface IUserInteractor
 {
-    Task<string> GetUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
-    Task SendUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
-    Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string icon = "user-check", string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
+    Task<string> GetUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
+    Task SendUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
+    Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
     Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default);
-    Task PublishTraceAsync(string title, string icon = "terminal", string color = "primary", CancellationToken cancellationToken = default);
+    Task PublishTraceAsync(string title, string level = "info", CancellationToken cancellationToken = default);
     Task PublishAgentStateAsync(string agentId, string state, string tag, CancellationToken cancellationToken = default);
     Task PublishContextAsync(string status, string chatTitle, string chatSubtitle, string activeAgentId, bool humanMode, CancellationToken cancellationToken = default);
     Task PublishSplitModeAsync(bool on, CancellationToken cancellationToken = default);

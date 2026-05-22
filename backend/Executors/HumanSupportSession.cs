@@ -30,14 +30,12 @@ internal static class HumanSupportSession
         await userInteractor.SendSystemMessageAsync(
             "Freq. Problem Agent → no KB match. Routing to human agent queue...",
             systemStyle: "escalate",
-            icon: "siren",
             audience: MessageAudience.Both,
             cancellationToken: cancellationToken);
 
         await userInteractor.SendSystemMessageAsync(
             "Human agent Daniel M. assigned. Joining the conversation now.",
             systemStyle: "handoff",
-            icon: "user-check",
             audience: MessageAudience.Both,
             cancellationToken: cancellationToken);
 
@@ -52,8 +50,7 @@ internal static class HumanSupportSession
             cancellationToken);
         await userInteractor.PublishTraceAsync(
             $"Human agent Daniel M. joined the conversation ({handoffReason})",
-            TraceConstants.IconUserCheck,
-            TraceConstants.ColorPrimary,
+            "info",
             cancellationToken);
 
         bool resolved = false;
@@ -64,7 +61,7 @@ internal static class HumanSupportSession
         {
             string message = await userInteractor.GetUserResponseAsync(
                 string.Empty,
-                BffWorkflowClient.AgentRegistry["human-support"],
+                "human-support",
                 cancellationToken: cancellationToken);
 
             if (string.Equals(message, WorkflowControlTokens.MarkResolved, StringComparison.Ordinal))
@@ -93,13 +90,11 @@ internal static class HumanSupportSession
         {
             await userInteractor.PublishTraceAsync(
                 "Issue resolved by human support",
-                TraceConstants.IconUserCheck,
-                TraceConstants.ColorSuccess,
+                "success",
                 cancellationToken);
             await userInteractor.SendSystemMessageAsync(
                 "Issue marked as resolved by the customer.",
                 systemStyle: "resolved",
-                icon: "check-circle",
                 audience: MessageAudience.Both,
                 cancellationToken: cancellationToken);
         }
@@ -107,8 +102,7 @@ internal static class HumanSupportSession
         {
             await userInteractor.PublishTraceAsync(
                 "Human support ended without explicit resolution",
-                TraceConstants.IconSiren,
-                TraceConstants.ColorWarning,
+                "warning",
                 cancellationToken);
         }
 

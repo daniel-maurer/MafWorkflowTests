@@ -16,19 +16,6 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
     private readonly Func<IUserInteractor, Workflow> _workflowFactory;
 
-    // Central registry of agent identities used to render chat messages correctly on the frontend.
-    // Keeping this in one place ensures every executor surfaces its own icon/name/color rather than
-    // a generic "MAF Agent" badge.
-    public static readonly IReadOnlyDictionary<string, AgentIdentity> AgentRegistry =
-        new Dictionary<string, AgentIdentity>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["triage"] = new() { Id = "triage", Name = "Triage Agent", Icon = "git-branch", BubbleStyle = "triage", ColorTheme = "primary" },
-            ["freq"] = new() { Id = "freq", Name = "Freq. Problem Agent", Icon = "database", BubbleStyle = "freq", ColorTheme = "warning" },
-            ["res"] = new() { Id = "res", Name = "Resolution Agent", Icon = "wrench", BubbleStyle = "res", ColorTheme = "success" },
-            ["pattern"] = new() { Id = "pattern", Name = "Pattern Record Agent", Icon = "bar-chart-2", BubbleStyle = "pattern", ColorTheme = "error" },
-            ["human-support"] = new() { Id = "human-support", Name = "Daniel M.", Icon = "headphones", BubbleStyle = "human", ColorTheme = "human" },
-            ["maf"] = AgentIdentity.Default,
-        };
 
     public BffWorkflowClient(WorkflowConfiguration configuration, IChatClient chatClient, Func<IUserInteractor, Workflow> workflowFactory)
     {
@@ -50,7 +37,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         await _connection.StartAsync(cancellationToken);
         await _connection.InvokeAsync("RegisterWorker", _configuration.WorkerId, new[] { "support", "incident-triage" }, cancellationToken);
-        await PublishTraceAsync(string.Empty, "MAF worker connected to BFF.", TraceConstants.IconTerminal, TraceConstants.ColorPrimary);
+        await PublishTraceAsync(string.Empty, "MAF worker connected to BFF.");
     }
 
     private void ConfigureHandlers()
@@ -138,7 +125,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await PublishMessageAsync(command.SessionId, CreateUserMessage(command.InitialMessage));
         }
 
-        await PublishTraceAsync(command.SessionId, "Workflow started.", TraceConstants.IconGitBranch, TraceConstants.ColorPrimary);
+        await PublishTraceAsync(command.SessionId, "Workflow started.");
         await PublishAgentStateAsync(command.SessionId, "triage", "active", "Running");
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
@@ -154,7 +141,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         var session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id));
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
-        await PublishTraceAsync(command.SessionId, "User message received.", TraceConstants.IconGitBranch, TraceConstants.ColorPrimary);
+        await PublishTraceAsync(command.SessionId, "User message received.");
         await session.EnqueueMessageAsync(command.Text);
     }
 
@@ -166,26 +153,22 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        var human = AgentRegistry["human-support"];
         await PublishMessageAsync(command.SessionId, new MafMessagePayload
         {
             Id = GenerateId("msg"),
             Type = "message",
             Side = "left",
             SenderType = "human",
-            SenderName = human.Name,
-            Icon = human.Icon,
-            BubbleStyle = human.BubbleStyle,
+            AgentId = "human-support",
             SystemStyle = null,
             Text = command.Text,
             Tools = Array.Empty<object>(),
             CreatedAt = DateTime.UtcNow,
             SplitMirror = true,
-            // Human-agent messages are spoken to the customer, so they belong in both panes.
             Audience = MessageAudience.Both,
         });
         await session.EnqueueMessageAsync(command.Text);
-        await PublishTraceAsync(command.SessionId, "Human message received and routed to session.", TraceConstants.IconUserCheck, TraceConstants.ColorPrimary);
+        await PublishTraceAsync(command.SessionId, "Human message received and routed to session.");
     }
 
     private async Task HandleRunScenarioAsync(MafRunScenarioCommand command)
@@ -196,7 +179,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        await PublishTraceAsync(command.SessionId, $"Scenario '{command.ScenarioId}' requested.", TraceConstants.IconTag, TraceConstants.ColorPrimary);
+        await PublishTraceAsync(command.SessionId, $"Scenario '{command.ScenarioId}' requested.");
         await session.EnqueueMessageAsync(command.ScenarioId);
     }
 
@@ -209,7 +192,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         if (_sessions.TryGetValue(command.SessionId, out var session))
         {
             await session.EnqueueMessageAsync(WorkflowControlTokens.MarkResolved);
-            await PublishTraceAsync(command.SessionId, "User marked the issue as resolved.", TraceConstants.IconUserCheck, TraceConstants.ColorSuccess);
+            await PublishTraceAsync(command.SessionId, "User marked the issue as resolved.", "success");
         }
         else
         {
@@ -249,16 +232,14 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         await PublishPublicEventAsync(sessionId, "message", payload);
     }
 
-    private async Task PublishTraceAsync(string sessionId, string title, string icon = "git-branch", string color = "primary")
+    private async Task PublishTraceAsync(string sessionId, string title, string level = "info")
     {
         await PublishPublicEventAsync(sessionId, "trace", new MafTracePayload
         {
             Id = GenerateId("trc"),
             Time = DateTime.UtcNow,
-            Icon = icon,
-            Color = color,
             Title = title,
-            Level = color
+            Level = level
         });
     }
 
@@ -313,10 +294,6 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private static string GenerateId(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
 
-    private static AgentIdentity ResolveAgent(AgentIdentity? agent) =>
-        agent is null
-            ? AgentIdentity.Default
-            : AgentRegistry.TryGetValue(agent.Id, out var registered) ? registered : agent;
 
     private MafMessagePayload CreateUserMessage(string text)
     {
@@ -326,20 +303,16 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Type = "message",
             Side = "right",
             SenderType = "user",
-            SenderName = "You",
-            Icon = "user",
-            BubbleStyle = "user",
+            AgentId = null,
             SystemStyle = null,
             Text = text,
             Tools = Array.Empty<object>(),
             CreatedAt = DateTime.UtcNow,
-            // Always mirror the user's own message into the split view so the chat history
-            // is preserved when the workflow flips into human-handoff mode.
             SplitMirror = true,
         };
     }
 
-    private MafMessagePayload CreateAgentMessage(string text, AgentIdentity agent, IReadOnlyList<AgentToolCall>? tools, string audience = MessageAudience.Both)
+    private MafMessagePayload CreateAgentMessage(string text, string? agentId, IReadOnlyList<AgentToolCall>? tools, string audience = MessageAudience.Both)
     {
         return new MafMessagePayload
         {
@@ -347,22 +320,19 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Type = "message",
             Side = "left",
             SenderType = "agent",
-            SenderName = agent.Name,
-            Icon = agent.Icon,
-            BubbleStyle = agent.BubbleStyle,
+            AgentId = agentId,
             SystemStyle = null,
             Text = text,
             Tools = (tools ?? Array.Empty<AgentToolCall>())
                 .Select(t => (object)new MafToolCallPayload { Name = t.Name, Args = t.Args, Ok = t.Ok })
                 .ToArray(),
             CreatedAt = DateTime.UtcNow,
-            // Default agent messages to mirror so the human-handoff split chat keeps the full history.
             SplitMirror = true,
             Audience = audience,
         };
     }
 
-    private MafMessagePayload CreateSystemMessage(string text, string systemStyle, string icon, string audience)
+    private MafMessagePayload CreateSystemMessage(string text, string systemStyle, string audience)
     {
         return new MafMessagePayload
         {
@@ -370,9 +340,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Type = "system",
             Side = "center",
             SenderType = "system",
-            SenderName = "System",
-            Icon = icon,
-            BubbleStyle = null!,
+            AgentId = null,
             SystemStyle = systemStyle,
             Text = text,
             Tools = Array.Empty<object>(),
@@ -447,7 +415,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             catch (Exception ex)
             {
                 Logger.LogError($"Session {_sessionId} failed: {ex.Message}");
-                await _parent.PublishTraceAsync(_sessionId, $"Session error: {ex.Message}", TraceConstants.IconSiren, TraceConstants.ColorError);
+                await _parent.PublishTraceAsync(_sessionId, $"Session error: {ex.Message}", "error");
             }
         }
 
@@ -471,31 +439,26 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         }
 
 
-        public async Task SendUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
+        public async Task SendUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
             if (IsConsolePrompt(prompt) && (tools is null || tools.Count == 0))
             {
                 return;
             }
 
-            var resolved = ResolveAgent(agent);
-            await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools, audience));
+            await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience));
         }
 
-        public async Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string icon = "user-check", string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
+        public async Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
-            await _parent.PublishMessageAsync(_sessionId, _parent.CreateSystemMessage(text, systemStyle, icon, audience));
+            await _parent.PublishMessageAsync(_sessionId, _parent.CreateSystemMessage(text, systemStyle, audience));
         }
 
-        public async Task<string> GetUserResponseAsync(string prompt, AgentIdentity? agent = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
+        public async Task<string> GetUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
-            // Some executors call GetUserResponseAsync purely to read the next user/human input
-            // and pass a console-style placeholder prompt (e.g. "[ATENDENTE HUMANO] "). Those
-            // placeholders should NOT show up as agent chat bubbles in the UI.
             if (!IsConsolePrompt(prompt))
             {
-                var resolved = ResolveAgent(agent);
-                await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, resolved, tools, audience));
+                await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience));
             }
 
             return await _incomingMessages.Reader.ReadAsync(cancellationToken);
@@ -519,9 +482,9 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await _parent.PublishTypingAsync(_sessionId, on, label);
         }
 
-        public async Task PublishTraceAsync(string title, string icon = "terminal", string color = "primary", CancellationToken cancellationToken = default)
+        public async Task PublishTraceAsync(string title, string level = "info", CancellationToken cancellationToken = default)
         {
-            await _parent.PublishTraceAsync(_sessionId, title, icon, color);
+            await _parent.PublishTraceAsync(_sessionId, title, level);
         }
 
         public async Task PublishAgentStateAsync(string agentId, string state, string tag, CancellationToken cancellationToken = default)
@@ -585,7 +548,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             // attendant pane (see TriageExecutor for the rationale).
             await PublishMessageAsync(sessionId, CreateAgentMessage(
                 string.IsNullOrWhiteSpace(triageResult.Summary) ? "Issue classified." : triageResult.Summary,
-                AgentRegistry["triage"], null, MessageAudience.Attendant));
+                "triage", null, MessageAudience.Attendant));
             return;
         }
 
@@ -597,7 +560,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             // message that follows.
             await PublishMessageAsync(sessionId, CreateAgentMessage(
                 frequentProblemResult.MessageForUser ?? "Analyzing issue against known problems.",
-                AgentRegistry["freq"], null, MessageAudience.Attendant));
+                "freq", null, MessageAudience.Attendant));
 
             if (frequentProblemResult.MatchedIssue != null)
             {
@@ -618,32 +581,13 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
         if (outputData is ResolutionResult resolutionResult)
         {
-            var tools = (resolutionResult.ActionsExecuted ?? new List<string>())
-                .Where(action => !string.IsNullOrWhiteSpace(action))
-                .Select(action => new MafToolCallPayload
-                {
-                    Name = action,
-                    Args = string.Empty,
-                    Ok = resolutionResult.IsResolved,
-                })
-                .Cast<object>()
-                .ToArray();
-
-            await PublishMessageAsync(sessionId, new MafMessagePayload
-            {
-                Id = GenerateId("msg"),
-                Type = "message",
-                Side = "left",
-                SenderType = "agent",
-                SenderName = AgentRegistry["res"].Name,
-                Icon = AgentRegistry["res"].Icon,
-                BubbleStyle = AgentRegistry["res"].BubbleStyle,
-                SystemStyle = null,
-                Text = resolutionResult.MessageForUser ?? "Resolution completed.",
-                Tools = tools,
-                CreatedAt = DateTime.UtcNow,
-                SplitMirror = true,
-            });
+            await PublishMessageAsync(sessionId, CreateAgentMessage(
+                resolutionResult.MessageForUser ?? "Resolution completed.",
+                "res",
+                (resolutionResult.ActionsExecuted ?? new List<string>())
+                    .Where(action => !string.IsNullOrWhiteSpace(action))
+                    .Select(action => new AgentToolCall { Name = action, Args = string.Empty, Ok = resolutionResult.IsResolved })
+                    .ToList()));
             return;
         }
 
@@ -652,7 +596,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             // Pattern descriptions are internal analytics, not customer-facing replies.
             await PublishMessageAsync(sessionId, CreateAgentMessage(
                 patternRecordResult.PatternDescription ?? "Pattern recorded.",
-                AgentRegistry["pattern"], null, MessageAudience.Attendant));
+                "pattern", null, MessageAudience.Attendant));
             return;
         }
 
@@ -669,7 +613,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         {
             await PublishMessageAsync(sessionId, CreateAgentMessage(
                 outputData.ToString() ?? string.Empty,
-                AgentIdentity.Default, null));
+                "maf", null));
         }
     }
 
@@ -704,48 +648,17 @@ internal sealed class MafEventEnvelope
 
 internal sealed class MafMessagePayload
 {
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = string.Empty;
-
-    [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
-
-    [JsonPropertyName("side")]
-    public string Side { get; set; } = string.Empty;
-
-    [JsonPropertyName("senderType")]
-    public string SenderType { get; set; } = string.Empty;
-
-    [JsonPropertyName("senderName")]
-    public string SenderName { get; set; } = string.Empty;
-
-    [JsonPropertyName("icon")]
-    public string Icon { get; set; } = string.Empty;
-
-    [JsonPropertyName("bubbleStyle")]
-    public string BubbleStyle { get; set; } = string.Empty;
-
-    [JsonPropertyName("systemStyle")]
-    public string? SystemStyle { get; set; }
-
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = string.Empty;
-
-    [JsonPropertyName("tools")]
-    public object[] Tools { get; set; } = Array.Empty<object>();
-
-    [JsonPropertyName("createdAt")]
-    public DateTime CreatedAt { get; set; }
-
-    [JsonPropertyName("splitMirror")]
-    public bool SplitMirror { get; set; }
-
-    /// <summary>
-    /// Visibility scope used by the frontend split-pane to decide whether a message is shown
-    /// to the customer, to the human attendant, both, or neither. See <see cref="MessageAudience"/>.
-    /// </summary>
-    [JsonPropertyName("audience")]
-    public string Audience { get; set; } = MessageAudience.Both;
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("type")] public string Type { get; set; } = string.Empty;
+    [JsonPropertyName("side")] public string Side { get; set; } = string.Empty;
+    [JsonPropertyName("senderType")] public string SenderType { get; set; } = string.Empty;
+    [JsonPropertyName("agentId")] public string? AgentId { get; set; }
+    [JsonPropertyName("systemStyle")] public string? SystemStyle { get; set; }
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+    [JsonPropertyName("tools")] public object[] Tools { get; set; } = Array.Empty<object>();
+    [JsonPropertyName("createdAt")] public DateTime CreatedAt { get; set; }
+    [JsonPropertyName("splitMirror")] public bool SplitMirror { get; set; }
+    [JsonPropertyName("audience")] public string Audience { get; set; } = MessageAudience.Both;
 }
 
 internal sealed class MafToolCallPayload
@@ -762,22 +675,10 @@ internal sealed class MafToolCallPayload
 
 internal sealed class MafTracePayload
 {
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = string.Empty;
-
-    [JsonPropertyName("time")]
-    public DateTime Time { get; set; }
-
-    [JsonPropertyName("icon")]
-    public string Icon { get; set; } = string.Empty;
-
-    [JsonPropertyName("color")]
-    public string Color { get; set; } = string.Empty;
-
-    [JsonPropertyName("title")]
-    public string Title { get; set; } = string.Empty;
-    [JsonPropertyName("level")]
-    public string Level { get; set; } = string.Empty;
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("time")] public DateTime Time { get; set; }
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("level")] public string Level { get; set; } = "info";
 }
 
 internal sealed class MafTypingPayload

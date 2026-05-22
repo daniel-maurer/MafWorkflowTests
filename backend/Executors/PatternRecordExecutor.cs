@@ -52,7 +52,7 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
 
         if (!resolutionResult.IsResolved)
         {
-            await _userInteractor.PublishTraceAsync("Pattern recording skipped - issue not resolved", TraceConstants.IconFileSearch, TraceConstants.ColorPrimary, cancellationToken);
+            await _userInteractor.PublishTraceAsync("Pattern recording skipped - issue not resolved", "info", cancellationToken);
             Logger.LogInfo("Skipping pattern recording - issue was not resolved");
             await _userInteractor.PublishAgentStateAsync("pattern", "done", "Skipped", cancellationToken);
             await _userInteractor.PublishContextAsync(
@@ -65,7 +65,7 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
             return CreateEmptyResult();
         }
 
-        await _userInteractor.PublishTraceAsync("Analyzing pattern from resolved issue", TraceConstants.IconPickaxe, TraceConstants.ColorPrimary, cancellationToken);
+        await _userInteractor.PublishTraceAsync("Analyzing pattern from resolved issue", "info", cancellationToken);
 
         var problemSummary = await context.ReadStateAsync<string>(Constants.ProblemSummaryKey, Constants.TriageStateScope) ?? "Unknown problem";
         var escalationReason = resolutionResult.EscalationReason ?? "No specific reason";
@@ -109,7 +109,7 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
                 Logger.LogDebug($"Analyzing pattern for: {problemSummary}");
 
                 await _userInteractor.SetAgentTypingAsync("Pattern Record Agent analyzing", true, cancellationToken);
-                await _userInteractor.PublishTraceAsync("Extracting pattern characteristics", TraceConstants.IconTag, TraceConstants.ColorPrimary, cancellationToken);
+                await _userInteractor.PublishTraceAsync("Extracting pattern characteristics", "info", cancellationToken);
 
                 // Call agent with timeout to prevent indefinite waiting
                 var response = await this._patternRecordAgent.RunAsync(
@@ -123,7 +123,7 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
                     await PersistPatternAsync(patternResult, cancellationToken);
                     DisplayPatternInfo(patternResult);
 
-                    await _userInteractor.PublishTraceAsync("Pattern analysis complete, recording to knowledge base", TraceConstants.IconBookOpen, TraceConstants.ColorSuccess, cancellationToken);
+                    await _userInteractor.PublishTraceAsync("Pattern analysis complete, recording to knowledge base", "success", cancellationToken);
                     await context.YieldOutputAsync(patternResult, cancellationToken);
                     await _userInteractor.PublishAgentStateAsync("pattern", "done", "Done", cancellationToken);
                     await _userInteractor.PublishContextAsync(
@@ -138,20 +138,20 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
                 }
                 else
                 {
-                    await _userInteractor.PublishTraceAsync("Failed to analyze pattern - invalid response format", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
+                    await _userInteractor.PublishTraceAsync("Failed to analyze pattern - invalid response format", "error", cancellationToken);
                     Logger.LogError($"Failed to deserialize pattern record result. Raw response: {response.Text}");
                     result = CreateEmptyResult();
                 }
             }
             catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
             {
-                await _userInteractor.PublishTraceAsync($"Pattern analysis timed out after {PatternAnalysisTimeoutSeconds} seconds", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
+                await _userInteractor.PublishTraceAsync($"Pattern analysis timed out after {PatternAnalysisTimeoutSeconds} seconds", "error", cancellationToken);
                 Logger.LogError($"Pattern analysis timed out after {PatternAnalysisTimeoutSeconds} seconds");
                 result = CreateEmptyResult();
             }
             catch (Exception ex)
             {
-                await _userInteractor.PublishTraceAsync($"Error during pattern analysis: {ex.Message}", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
+                await _userInteractor.PublishTraceAsync($"Error during pattern analysis: {ex.Message}", "error", cancellationToken);
                 Logger.LogError($"Error during pattern recording (attempt {attemptCount}): {ex.Message}");
 
                 if (attemptCount >= MaxPatternAnalysisAttempts)
