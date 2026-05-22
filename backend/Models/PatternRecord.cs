@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace SupportWorkflow;
 
 /// <summary>
-/// Represents a detected pattern in user issues that could become a known issue.
+/// Represents a simplified detected pattern in user issues that could become a known issue.
 /// </summary>
 public class PatternRecord
 {
@@ -47,22 +47,10 @@ public class PatternRecord
     public List<string> ExampleSolutions { get; set; } = new List<string>();
 
     /// <summary>
-    /// Gets or sets the confidence score assigned to this pattern.
-    /// </summary>
-    [JsonPropertyName("confidence")]
-    public double Confidence { get; set; } = 0.0;
-
-    /// <summary>
     /// Gets or sets whether this pattern has been promoted to a known issue.
     /// </summary>
     [JsonPropertyName("promoted_to_known_issue")]
     public bool PromotedToKnownIssue { get; set; }
-
-    /// <summary>
-    /// Gets or sets temporal characteristics (e.g., "Delay: typically happens on day 4 when expected on day 3").
-    /// </summary>
-    [JsonPropertyName("temporal_characteristics")]
-    public string? TemporalCharacteristics { get; set; }
 
     /// <summary>
     /// Gets or sets the ID of the known issue if promoted (references KnownIssue.Problem).

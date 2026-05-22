@@ -438,7 +438,7 @@ export function createMockHubConnection(opts: { workflowId: string }): MockHubCo
       senderName: 'Daniel M.',
       icon: 'headphones',
       bubbleStyle: 'human',
-      text: "Hi! I'm Sarah, your human support specialist. I've reviewed the case so far. This looks like a TISS schema integration issue. Which connector version are you using, and what exact error code are you seeing?",
+      text: "Hi! I'm Daniel, your human support specialist. I've reviewed the case so far. This looks like a TISS schema integration issue. Which connector version are you using, and what exact error code are you seeing?",
       splitMirror: true,
     });
     s.trace({ icon: 'user', color: 'human', title: 'Daniel M. joined and sent opening message', level: 'info' });

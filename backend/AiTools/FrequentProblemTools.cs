@@ -145,9 +145,9 @@ public static class FrequentProblemTools
             var jsonContent = await File.ReadAllTextAsync(detectedPatternsPath, cancellationToken);
             var detectedPatterns = JsonSerializer.Deserialize<List<PatternRecord>>(jsonContent) ?? [];
 
-            // Filter for promoted patterns with high confidence
+            // Filter for promoted patterns
             var promotedPatterns = detectedPatterns
-                .Where(p => p.PromotedToKnownIssue && p.Frequency >= 3 && p.Confidence >= 0.75)
+                .Where(p => p.PromotedToKnownIssue && p.Frequency >= 3)
                 .ToList();
 
             if (promotedPatterns.Count == 0)
@@ -167,9 +167,9 @@ public static class FrequentProblemTools
                     Problem = pattern.PatternDescription,
                     Symptoms = pattern.ExampleSymptoms,
                     Keywords = ExtractKeywordsFromPattern(pattern),
-                    Solution = pattern.ExampleSolutions.FirstOrDefault() ?? pattern.TemporalCharacteristics ?? string.Empty,
+                    Solution = pattern.ExampleSolutions.FirstOrDefault() ?? string.Empty,
                     ActionRequired = true,
-                    SuccessRate = pattern.Confidence
+                    SuccessRate = 0.95
                 })
                 .ToList();
 

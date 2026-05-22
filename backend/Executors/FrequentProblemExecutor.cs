@@ -64,11 +64,7 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
             await _userInteractor.PublishTraceAsync("Searching knowledge base for known issues", TraceConstants.IconDatabase, TraceConstants.ColorPrimary, cancellationToken);
             var response = await this._frequentProblemAgent.RunAsync(agentInput, cancellationToken: cancellationToken);
             
-            // Extract JSON object from response text, handling cases where there may be extra text or multiple objects
-            var jsonText = ExtractJsonFromResponse(response.Text);
-            var frequentProblemResult = JsonSerializer.Deserialize<FrequentProblemResult>(jsonText);
-            
-            if (frequentProblemResult == null)
+            if (!AgentResponseParser.TryDeserializeAgentResponse(response.Text, out FrequentProblemResult? frequentProblemResult))
             {
                 throw new InvalidOperationException("Failed to deserialize FrequentProblemResult from agent response.");
             }
@@ -92,21 +88,34 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                 if (string.IsNullOrEmpty(frequentProblemResult.MessageForUser) == false)
                 {
                     await _userInteractor.PublishTraceAsync("Matching issue found, loading details", TraceConstants.IconTag, TraceConstants.ColorSuccess, cancellationToken);
-                    var searchKeywords = ExtractKeywords(summary);
-                    var matchedIssues = await FrequentProblemTools.GetKnownIssuesAsync(searchKeywords, cancellationToken);
                     
-                    if (matchedIssues.Count > 0)
-                    {
-                        frequentProblemResult.MatchedIssue = matchedIssues[0];
-                        frequentProblemResult.RequiredTools = matchedIssues[0].ToolsRequired ?? new List<string>();
-                        frequentProblemResult.SuccessRate = matchedIssues[0].SuccessRate;
+                    KnownIssue? matchedIssue = null;
+                    var allIssues = await KnowledgeBasePersistence.ReadKnownIssuesAsync(cancellationToken);
 
-                        Logger.LogExecutorResult($"[Problemas Frequentes] Problema conhecido: {matchedIssues[0].Problem}");
+                    // 1. Prioritize title/problem match if the agent specified one
+                    if (frequentProblemResult.MatchedIssue != null && !string.IsNullOrEmpty(frequentProblemResult.MatchedIssue.Problem))
+                    {
+                        matchedIssue = allIssues.FirstOrDefault(ki => ki.Problem.Equals(frequentProblemResult.MatchedIssue.Problem, StringComparison.OrdinalIgnoreCase));
+                    }
+
+                    // 2. Fallback to ranking issues by keyword/symptom score
+                    var rankedIssues = GetRankedIssues(allIssues, summary);
+                    if (matchedIssue == null && rankedIssues.Count > 0)
+                    {
+                        matchedIssue = rankedIssues[0];
+                    }
+
+                    if (matchedIssue != null)
+                    {
+                        frequentProblemResult.MatchedIssue = matchedIssue;
+                        frequentProblemResult.RequiredTools = matchedIssue.ToolsRequired ?? new List<string>();
+                        frequentProblemResult.SuccessRate = matchedIssue.SuccessRate;
+
+                        Logger.LogExecutorResult($"[Problemas Frequentes] Problema conhecido: {matchedIssue.Problem}");
                         Logger.LogDebug($"Required tools: {string.Join(", ", frequentProblemResult.RequiredTools)}");
 
-                        // Publish matching KB entries so the frontend KB tab updates immediately,
-                        // not only after the workflow output is yielded downstream.
-                        var kbItems = matchedIssues.Select(issue => new KbEntry
+                        // Publish matching KB entries sorted by relevance
+                        var kbItems = rankedIssues.Select(issue => new KbEntry
                         {
                             Title = issue.Problem,
                             Category = string.Empty,
@@ -115,6 +124,21 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
                             ResolutionType = issue.McpAction ?? "knowledge-base",
                             Tags = issue.Keywords?.ToArray() ?? Array.Empty<string>(),
                         }).ToList();
+
+                        // Ensure our selected matchedIssue is at the top/present in the KB display
+                        if (kbItems.All(ki => !ki.Title.Equals(matchedIssue.Problem, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            kbItems.Insert(0, new KbEntry
+                            {
+                                Title = matchedIssue.Problem,
+                                Category = string.Empty,
+                                Score = matchedIssue.SuccessRate,
+                                Summary = matchedIssue.Symptoms.FirstOrDefault() ?? matchedIssue.Solution ?? string.Empty,
+                                ResolutionType = matchedIssue.McpAction ?? "knowledge-base",
+                                Tags = matchedIssue.Keywords?.ToArray() ?? Array.Empty<string>(),
+                            });
+                        }
+
                         await _userInteractor.PublishKnowledgeBaseAsync(kbItems, cancellationToken);
                     }
                     else
@@ -185,40 +209,79 @@ internal sealed class FrequentProblemExecutor : Executor<TriageResult, FrequentP
     }
 
     /// <summary>
-    /// Extracts a valid JSON object from response text that may contain extra text or multiple objects.
-    /// Finds the first complete JSON object in the response.
+    /// Ranks known issues by keyword and symptom overlap.
     /// </summary>
-    private static string ExtractJsonFromResponse(string responseText)
+    private static List<KnownIssue> GetRankedIssues(List<KnownIssue> allIssues, string summary)
     {
-        if (string.IsNullOrWhiteSpace(responseText))
-            throw new InvalidOperationException("Response text is empty.");
+        if (string.IsNullOrEmpty(summary) || allIssues == null || allIssues.Count == 0)
+            return new List<KnownIssue>();
 
-        // Find the first opening brace
-        int startIndex = responseText.IndexOf('{');
-        if (startIndex == -1)
-            throw new InvalidOperationException("No JSON object found in response text.");
+        var summaryWords = summary
+            .Split(new[] { ' ', ',', '.', ':', ';', '?', '!', '\n', '\t', '-', '_', '/', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Trim().ToLowerInvariant())
+            .Where(w => w.Length > 2)
+            .ToList();
 
-        // Find the matching closing brace
-        int braceCount = 0;
-        int endIndex = -1;
-        for (int i = startIndex; i < responseText.Length; i++)
+        var scoredIssues = new List<(KnownIssue Issue, double Score)>();
+
+        foreach (var issue in allIssues)
         {
-            if (responseText[i] == '{')
-                braceCount++;
-            else if (responseText[i] == '}')
+            double score = 0;
+
+            // 1. Keyword match: count how many keywords from the issue match the summary words
+            if (issue.Keywords != null)
             {
-                braceCount--;
-                if (braceCount == 0)
+                foreach (var kw in issue.Keywords)
                 {
-                    endIndex = i;
-                    break;
+                    var cleanKw = kw.Trim().TrimEnd('.').TrimEnd(',').ToLowerInvariant();
+                    if (string.IsNullOrEmpty(cleanKw) || cleanKw.Length <= 2)
+                        continue;
+
+                    if (summaryWords.Contains(cleanKw) || (cleanKw.Length > 3 && summary.Contains(cleanKw, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        // Give higher weight to more specific keywords, lower weight to generic ones
+                        if (cleanKw == "creche" || cleanKw == "transporte" || cleanKw == "refeição" || cleanKw == "senha" || cleanKw == "bloqueada" || cleanKw == "bloqueio")
+                        {
+                            score += 10.0;
+                        }
+                        else if (cleanKw == "cliente" || cleanKw == "pagamento" || cleanKw == "recebido" || cleanKw == "recebeu" || cleanKw == "atraso" || cleanKw == "vale")
+                        {
+                            score += 1.0;
+                        }
+                        else
+                        {
+                            score += 2.0;
+                        }
+                    }
                 }
+            }
+
+            // 2. Symptoms match: check if any of the symptoms have high overlap
+            if (issue.Symptoms != null)
+            {
+                foreach (var symptom in issue.Symptoms)
+                {
+                    var symptomWords = symptom
+                        .Split(new[] { ' ', ',', '.', ':', ';', '?', '!', '\n', '\t', '-', '_', '/' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(w => w.Trim().ToLowerInvariant())
+                        .Where(w => w.Length > 2)
+                        .ToList();
+
+                    int overlap = symptomWords.Intersect(summaryWords).Count();
+                    score += overlap * 1.5;
+                }
+            }
+
+            if (score > 0)
+            {
+                scoredIssues.Add((issue, score));
             }
         }
 
-        if (endIndex == -1)
-            throw new InvalidOperationException("No matching closing brace found in response text.");
-
-        return responseText.Substring(startIndex, endIndex - startIndex + 1);
+        return scoredIssues
+            .OrderByDescending(si => si.Score)
+            .Select(si => si.Issue)
+            .ToList();
     }
+
 }

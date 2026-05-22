@@ -647,7 +647,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        if (outputData is PatternRecordResult patternRecordResult)
+        if (outputData is PatternRecord patternRecordResult)
         {
             // Pattern descriptions are internal analytics, not customer-facing replies.
             await PublishMessageAsync(sessionId, CreateAgentMessage(

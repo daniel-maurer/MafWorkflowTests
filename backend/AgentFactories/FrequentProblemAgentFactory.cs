@@ -27,7 +27,7 @@ public class FrequentProblemAgentFactory
                     A tua tarefa é analisar o resumo do problema do cliente, e verificar se é um dos problemas conhecidos.
                     O teu objetivo é encontrar se o problema está listado nos problemas conhecidos através de palavras chaves.
 
-                    - Se o problema é conhecido, informe o próximo agente as ações necessárias para resolve-lo.
+                    - Se o problema for conhecido, defina a propriedade ""is_known"" como true e preencha ""matched_issue"" com o objeto correspondente exato que foi retornado pela ferramenta. Informe as ações necessárias para resolvê-lo em ""message_for_user"".
                     - Se não tiver solução informe se possui um prazo de solução cadastrado.
                     - Se o problema é complexo, informe que será atendido por um humano.",
                 name: "FrequentProblemAgent"

@@ -153,9 +153,9 @@ public static class KnowledgeBasePersistence
                 Problem = pattern.PatternDescription,
                 Symptoms = pattern.ExampleSymptoms,
                 Keywords = ExtractKeywords(pattern),
-                Solution = pattern.ExampleSolutions.FirstOrDefault() ?? pattern.TemporalCharacteristics ?? string.Empty,
+                Solution = pattern.ExampleSolutions.FirstOrDefault() ?? string.Empty,
                 ActionRequired = false,
-                SuccessRate = pattern.Confidence
+                SuccessRate = 0.95
             };
 
             knownIssues.Add(newIssue);
@@ -173,42 +173,12 @@ public static class KnowledgeBasePersistence
         }
     }
 
-    /// <summary>
-    /// Checks if two issue descriptions are similar based on common keywords.
-    /// </summary>
     private static bool AreIssuesSimilar(string desc1, string desc2)
     {
         if (string.IsNullOrEmpty(desc1) || string.IsNullOrEmpty(desc2))
             return false;
 
-        // Normalize and split into words
-        var words1 = desc1.ToLowerInvariant()
-            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
-            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length > 2) // Ignore short words
-            .ToHashSet();
-
-        var words2 = desc2.ToLowerInvariant()
-            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
-            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length > 2)
-            .ToHashSet();
-
-        // Check for significant overlap
-        var intersection = words1.Intersect(words2).Count();
-        var union = words1.Union(words2).Count();
-
-        if (union == 0) return false;
-
-        var similarity = (double)intersection / union;
-
-        // Also check for key phrases
-        var keyPhrases = new[] { "vale refeicao", "nao recebimento", "beneficios", "pagamento", "atraso", "cliente" };
-        var hasCommonPhrase = keyPhrases.Any(phrase =>
-            desc1.ToLowerInvariant().Contains(phrase.Replace(" ", "")) &&
-            desc2.ToLowerInvariant().Contains(phrase.Replace(" ", "")));
-
-        return similarity >= 0.4 || hasCommonPhrase;
+        return desc1.Trim().Equals(desc2.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -222,16 +192,6 @@ public static class KnowledgeBasePersistence
         foreach (var symptom in pattern.ExampleSymptoms)
         {
             var words = symptom.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var word in words.Where(w => w.Length > 3))
-            {
-                keywords.Add(word.ToLower());
-            }
-        }
-
-        // Add temporal characteristics if present
-        if (!string.IsNullOrEmpty(pattern.TemporalCharacteristics))
-        {
-            var words = pattern.TemporalCharacteristics.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var word in words.Where(w => w.Length > 3))
             {
                 keywords.Add(word.ToLower());

@@ -50,8 +50,8 @@ Sempre pede confirmação ao cliente após resolver.",
        {
            ChatOptions = new()
            {
-               ResponseFormat = ChatResponseFormat.ForJsonSchema(AIJsonUtilities.CreateJsonSchema(typeof(FrequentProblemResult))),
-               Tools = 
+               ResponseFormat = ChatResponseFormat.ForJsonSchema(AIJsonUtilities.CreateJsonSchema(typeof(ResolutionResult))),
+               Tools =
                [
                    AIFunctionFactory.Create(ResolutionAgentTools.UnlockAccount),
                    AIFunctionFactory.Create(ResolutionAgentTools.SendEmail)

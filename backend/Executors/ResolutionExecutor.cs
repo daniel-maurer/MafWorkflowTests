@@ -147,21 +147,38 @@ Use no máximo uma frase direta ao cliente, sem dizer que não é possível reso
                 
                 Logger.LogInfo("Agent response received");
                 Logger.LogDebug($"Agent Response: {response.Text}");
-                
-                // Parse the JSON response to extract the user message
+
                 userMessage = response.Text;
-                try
+                ResolutionResult? parsedResult = null;
+                if (AgentResponseParser.TryDeserializeAgentResponse(response.Text, out ResolutionResult? resolutionResponse))
                 {
-                    var agentResponse = JsonSerializer.Deserialize<JsonElement>(response.Text);
-                    if (agentResponse.TryGetProperty("message_for_user", out var messageElement))
+                    parsedResult = resolutionResponse;
+                    if (!string.IsNullOrWhiteSpace(resolutionResponse.MessageForUser))
                     {
-                        userMessage = messageElement.GetString() ?? response.Text;
+                        userMessage = resolutionResponse.MessageForUser;
+                    }
+                    if (resolutionResponse.ActionsExecuted is { Count: > 0 })
+                    {
+                        actionsExecuted = resolutionResponse.ActionsExecuted;
                     }
                 }
-                catch
+
+                if (parsedResult != null && !parsedResult.IsResolved && parsedResult.RequiresHuman)
                 {
-                    // If parsing fails, use the full response
-                    Logger.LogDebug("Failed to parse agent response as JSON, using full response");
+                    await _userInteractor.SetAgentTypingAsync("Resolution Agent executing", false, cancellationToken);
+                    await _userInteractor.PublishTraceAsync("Resolution agent requested human escalation", TraceConstants.IconSiren, TraceConstants.ColorWarning, cancellationToken);
+                    var escalationResult = new ResolutionResult
+                    {
+                        IsResolved = false,
+                        RequiresHuman = true,
+                        MessageForUser = !string.IsNullOrWhiteSpace(parsedResult.MessageForUser)
+                            ? parsedResult.MessageForUser
+                            : "Este problema requer suporte humano. Um especialista entrará em contato em breve.",
+                        ActionsExecuted = actionsExecuted,
+                        EscalationReason = parsedResult.EscalationReason ?? "Resolution agent requested human escalation"
+                    };
+                    await context.YieldOutputAsync(escalationResult, cancellationToken);
+                    return escalationResult;
                 }
 
                 // Record which tools were meant to be called

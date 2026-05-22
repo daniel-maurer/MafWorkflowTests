@@ -60,3 +60,4 @@ agent-workflow-app/dist/
 agent-workflow-app/.vite/
 agent-workflow-app/build/
 agent-workflow-app/.env.local
+agent-framework-main/

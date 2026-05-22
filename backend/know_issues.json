@@ -1,4 +1,4 @@
-﻿[
+[
   {
     "problema": "Senha incorreta / Conta bloqueada",
     "sintomas": [
@@ -75,7 +75,69 @@
     "solucao": "O vale-refeição será pago no dia 25/04.",
     "requer_acao": false,
     "acao_mcp": "",
-    "taxa_sucesso": 95,
+    "taxa_sucesso": 0.95,
+    "prazo_resolucao": "00:00:00",
+    "tools_required": [],
+    "gravado_por_agente": false,
+    "data_gravacao": null,
+    "agente_versao": null
+  },
+  {
+    "problema": "O cliente não recebeu o vale transporte esperado.",
+    "sintomas": [
+      "Cliente reclama da não recepção do vale transporte",
+      "Cliente questiona sobre o atraso no pagamento do vale transporte",
+      "Cliente informa que o vale transporte não foi recebido."
+    ],
+    "keywords": [
+      "cliente",
+      "reclama",
+      "recepção",
+      "vale",
+      "transporte",
+      "questiona",
+      "sobre",
+      "atraso",
+      "pagamento",
+      "informa",
+      "recebido."
+    ],
+    "solucao": "Esse mês será pago no dia 20/05.",
+    "requer_acao": false,
+    "acao_mcp": "",
+    "taxa_sucesso": 0.95,
+    "prazo_resolucao": "00:00:00",
+    "tools_required": [],
+    "gravado_por_agente": false,
+    "data_gravacao": null,
+    "agente_versao": null
+  },
+  {
+    "problema": "O cliente não recebeu o auxílio para creche deste mês.",
+    "sintomas": [
+      "Cliente alega não ter recebido o auxílio para creche.",
+      "Apoio mensal da creche não foi creditado na conta do cliente.",
+      "Cliente relata não ter recebido o auxílio creche"
+    ],
+    "keywords": [
+      "cliente",
+      "alega",
+      "recebido",
+      "auxílio",
+      "para",
+      "creche.",
+      "apoio",
+      "mensal",
+      "creche",
+      "creditado",
+      "conta",
+      "cliente.",
+      "relata"
+    ],
+    "solucao": "Será pago dia 24/05.",
+    "requer_acao": false,
+    "acao_mcp": "",
+    "taxa_sucesso": 0.95,
     "prazo_resolucao": "00:00:00",
     "tools_required": [],
     "gravado_por_agente": false,

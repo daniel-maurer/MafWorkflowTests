@@ -8,31 +8,27 @@ namespace SupportWorkflow;
 /// <summary>
 /// Executor responsible for recording and analyzing patterns from human support interactions.
 /// Captures patterns for future automation and creates entries in the knowledge base.
+/// 
+/// Architecture: This executor orchestrates the pattern analysis workflow. The analysis prompt
+/// is managed by PatternRecordAgentFactory (factory owns configuration), keeping this executor
+/// focused on orchestration logic and workflow completion.
 /// </summary>
-internal sealed class PatternRecordExecutor : Executor<ResolutionResult, PatternRecordResult>
+internal sealed class PatternRecordExecutor : Executor<ResolutionResult, PatternRecord>
 {
     private readonly AIAgent _patternRecordAgent;
     private readonly IUserInteractor _userInteractor;
 
-    /// <summary>
-    /// Initializes a new instance of the PatternRecordExecutor.
-    /// </summary>
-    /// <param name="patternRecordAgent">The pattern record agent for analysis</param>
-    /// <param name="consoleInteractor">The console interactor for user communication</param>
+    // Safety constants to prevent infinite loops and hangs
+    private const int MaxPatternAnalysisAttempts = 1;
+    private const int PatternAnalysisTimeoutSeconds = 30;
+
     public PatternRecordExecutor(AIAgent patternRecordAgent, IUserInteractor userInteractor) : base("PatternRecordExecutor")
     {
         this._patternRecordAgent = patternRecordAgent ?? throw new ArgumentNullException(nameof(patternRecordAgent));
         this._userInteractor = userInteractor ?? throw new ArgumentNullException(nameof(userInteractor));
     }
 
-    /// <summary>
-    /// Handles the pattern recording and analysis of a resolved support issue.
-    /// </summary>
-    /// <param name="resolutionResult">The result from the resolution/human support executor</param>
-    /// <param name="context">The workflow context for state management</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>A PatternRecordResult containing the analysis</returns>
-    public override async ValueTask<PatternRecordResult> HandleAsync(
+    public override async ValueTask<PatternRecord> HandleAsync(
         ResolutionResult resolutionResult,
         IWorkflowContext context,
         CancellationToken cancellationToken = default)
@@ -54,10 +50,6 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
         Logger.LogInfo("Starting pattern record analysis for resolved issue");
         Logger.LogDebug($"Issue resolved: {resolutionResult.IsResolved}");
 
-        // Only record patterns if issue was actually resolved.
-        // When the issue was not resolved we still need to leave the pipeline in a clean
-        // terminal state — otherwise the Pattern Record card stays stuck on "Running"
-        // forever and the session looks half-complete.
         if (!resolutionResult.IsResolved)
         {
             await _userInteractor.PublishTraceAsync("Pattern recording skipped - issue not resolved", TraceConstants.IconFileSearch, TraceConstants.ColorPrimary, cancellationToken);
@@ -75,104 +67,109 @@ internal sealed class PatternRecordExecutor : Executor<ResolutionResult, Pattern
 
         await _userInteractor.PublishTraceAsync("Analyzing pattern from resolved issue", TraceConstants.IconPickaxe, TraceConstants.ColorPrimary, cancellationToken);
 
-        // Get problem summary and escalation reason from context
         var problemSummary = await context.ReadStateAsync<string>(Constants.ProblemSummaryKey, Constants.TriageStateScope) ?? "Unknown problem";
         var escalationReason = resolutionResult.EscalationReason ?? "No specific reason";
         var solution = resolutionResult.MessageForUser;
 
-        // Prepare context for the pattern record agent
-        string analysisPrompt = BuildAnalysisPrompt(problemSummary, escalationReason, solution);
-
-        Logger.LogDebug($"Analyzing pattern for: {problemSummary}");
-
-        try
+        // Read existing patterns from knowledge base to inject into the prompt
+        var existingPatterns = await KnowledgeBasePersistence.ReadDetectedPatternsAsync(cancellationToken);
+        string existingPatternsText = "";
+        if (existingPatterns.Count > 0)
         {
-            await _userInteractor.SetAgentTypingAsync("Pattern Record Agent analyzing", true, cancellationToken);
-            await _userInteractor.PublishTraceAsync("Extracting pattern characteristics", TraceConstants.IconTag, TraceConstants.ColorPrimary, cancellationToken);
-            var history = new List<ChatMessage>
+            existingPatternsText = string.Join("\n", existingPatterns.Select(p =>
+                $"- Descrição: \"{p.PatternDescription}\" | Frequência: {p.Frequency} | Solução: \"{(p.ExampleSolutions.Count > 0 ? p.ExampleSolutions[0] : string.Empty)}\""));
+        }
+        else
+        {
+            existingPatternsText = "(Nenhum padrão registrado ainda)";
+        }
+
+        // Create a timeout token combining user cancellation + timeout to prevent hangs
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(PatternAnalysisTimeoutSeconds));
+
+        int attemptCount = 0;
+        PatternRecord? result = null;
+
+        while (attemptCount < MaxPatternAnalysisAttempts && result == null)
+        {
+            try
             {
-                new ChatMessage(ChatRole.User, analysisPrompt)
-            };
+                attemptCount++;
 
-            var response = await this._patternRecordAgent.RunAsync(history, cancellationToken: cancellationToken);
-            var patternResult = JsonSerializer.Deserialize<PatternRecordResult>(response.Text);
+                // Build analysis prompt using factory template (factory owns configuration)
+                var promptTemplate = PatternRecordAgentFactory.GetAnalysisPromptTemplate();
+                var analysisPrompt = string.Format(
+                    promptTemplate,
+                    problemSummary,
+                    escalationReason,
+                    solution,
+                    existingPatternsText);
 
-            if (patternResult != null)
-            {
-                Logger.LogInfo($"Pattern analyzed: {patternResult.PatternType} - {patternResult.PatternDescription}");
-                Logger.LogDebug($"Pattern ready for automation: {patternResult.ReadyForAutomation}");
+                Logger.LogDebug($"Analyzing pattern for: {problemSummary}");
 
-                // Persist pattern to knowledge base
-                await PersistPatternAsync(patternResult, cancellationToken);
+                await _userInteractor.SetAgentTypingAsync("Pattern Record Agent analyzing", true, cancellationToken);
+                await _userInteractor.PublishTraceAsync("Extracting pattern characteristics", TraceConstants.IconTag, TraceConstants.ColorPrimary, cancellationToken);
 
-                // Display pattern information to user
-                DisplayPatternInfo(patternResult);
+                // Call agent with timeout to prevent indefinite waiting
+                var response = await this._patternRecordAgent.RunAsync(
+                    analysisPrompt,
+                    cancellationToken: timeoutCts.Token);
 
-                await _userInteractor.PublishTraceAsync("Pattern analysis complete, recording to knowledge base", TraceConstants.IconBookOpen, TraceConstants.ColorSuccess, cancellationToken);
-                await context.YieldOutputAsync(patternResult, cancellationToken);
-                await _userInteractor.PublishAgentStateAsync("pattern", "done", "Done", cancellationToken);
-                await _userInteractor.PublishContextAsync(
-                    "resolved",
-                    "Session Resolved ✓",
-                    "Issue resolved and pattern recorded.",
-                    "pattern",
-                    false,
-                    cancellationToken);
-                return patternResult;
+                if (AgentResponseParser.TryDeserializeAgentResponse(response.Text, out PatternRecord? patternResult) && patternResult != null)
+                {
+                    Logger.LogInfo($"Pattern analyzed: {patternResult.PatternDescription}");
+
+                    await PersistPatternAsync(patternResult, cancellationToken);
+                    DisplayPatternInfo(patternResult);
+
+                    await _userInteractor.PublishTraceAsync("Pattern analysis complete, recording to knowledge base", TraceConstants.IconBookOpen, TraceConstants.ColorSuccess, cancellationToken);
+                    await context.YieldOutputAsync(patternResult, cancellationToken);
+                    await _userInteractor.PublishAgentStateAsync("pattern", "done", "Done", cancellationToken);
+                    await _userInteractor.PublishContextAsync(
+                        "resolved",
+                        "Session Resolved ✓",
+                        "Issue resolved and pattern recorded.",
+                        "pattern",
+                        false,
+                        cancellationToken);
+
+                    result = patternResult;
+                }
+                else
+                {
+                    await _userInteractor.PublishTraceAsync("Failed to analyze pattern - invalid response format", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
+                    Logger.LogError($"Failed to deserialize pattern record result. Raw response: {response.Text}");
+                    result = CreateEmptyResult();
+                }
             }
-            else
+            catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
             {
-                await _userInteractor.PublishTraceAsync("Failed to analyze pattern", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
-                Logger.LogError("Failed to deserialize pattern record result");
-                return CreateEmptyResult();
+                await _userInteractor.PublishTraceAsync($"Pattern analysis timed out after {PatternAnalysisTimeoutSeconds} seconds", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
+                Logger.LogError($"Pattern analysis timed out after {PatternAnalysisTimeoutSeconds} seconds");
+                result = CreateEmptyResult();
+            }
+            catch (Exception ex)
+            {
+                await _userInteractor.PublishTraceAsync($"Error during pattern analysis: {ex.Message}", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
+                Logger.LogError($"Error during pattern recording (attempt {attemptCount}): {ex.Message}");
+
+                if (attemptCount >= MaxPatternAnalysisAttempts)
+                {
+                    result = CreateEmptyResult();
+                }
+            }
+            finally
+            {
+                await _userInteractor.SetAgentTypingAsync("Pattern Record Agent analyzing", false, cancellationToken);
             }
         }
-        catch (Exception ex)
-        {
-            await _userInteractor.PublishTraceAsync("Error during pattern analysis", TraceConstants.IconSiren, TraceConstants.ColorError, cancellationToken);
-            Logger.LogError($"Error during pattern recording: {ex.Message}");
-            return CreateEmptyResult();
-        }
-        finally
-        {
-            await _userInteractor.SetAgentTypingAsync("Pattern Record Agent analyzing", false, cancellationToken);
-        }
+
+        return result ?? CreateEmptyResult();
     }
 
-    /// <summary>
-    /// Builds the analysis prompt for the pattern record agent.
-    /// </summary>
-    private static string BuildAnalysisPrompt(string problemSummary, string escalationReason, string solution)
-    {
-        return $@"Analise o seguinte problema de suporte resolvido e identifique padrões:
 
-PROBLEMA RELATADO:
-{problemSummary}
-
-RAZÃO DA ESCALAÇÃO:
-{escalationReason}
-
-SOLUÇÃO APLICADA:
-{solution}
-
-Por favor, analise este caso e extraia:
-1. Que tipo de padrão isto representa?
-2. Quais são as palavras-chave?
-3. Qual é a característica temporal (se houver)?
-4. Quais são os sintomas típicos?
-5. Qual é a solução padrão?
-6. Com que frequência este padrão provavelmente ocorre?
-7. Qual é a taxa de sucesso esperada?
-8. Este padrão está pronto para automação?
-9. Se a resolução incluir uma data de pagamento ou prazo específico, descreva a solução exatamente como deve ser comunicada ao usuário, incluindo essa data ou prazo.
-
-Seja específico e forneça informações que possam ser usadas para treinar o sistema.";
-    }
-
-    /// <summary>
-    /// Persists the identified pattern to the knowledge base.
-    /// </summary>
-    private async Task PersistPatternAsync(PatternRecordResult patternResult, CancellationToken cancellationToken)
+    private async Task PersistPatternAsync(PatternRecord patternResult, CancellationToken cancellationToken)
     {
         if (!ShouldPersistPattern(patternResult))
         {
@@ -182,35 +179,23 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
 
         try
         {
-            // Convert PatternRecordResult to PatternRecord
-            var pattern = new PatternRecord
-            {
-                PatternDescription = patternResult.PatternDescription,
-                Confidence = patternResult.SuccessRate,
-                Frequency = 1,
-                FirstDetected = DateTime.UtcNow,
-                LastDetected = DateTime.UtcNow,
-                ExampleSymptoms = patternResult.ExampleSymptoms,
-                ExampleSolutions = new List<string> { patternResult.Solution },
-                TemporalCharacteristics = patternResult.TemporalInfo,
-                PromotedToKnownIssue = KnowledgeBasePersistence.KnownIssueWritesEnabled && patternResult.ReadyForAutomation
-            };
+            var pattern = patternResult;
+            pattern.Frequency = 1;
+            pattern.FirstDetected = DateTime.UtcNow;
+            pattern.LastDetected = DateTime.UtcNow;
+            pattern.PromotedToKnownIssue = false;
 
-            // Read existing patterns
             var existingPatterns = await KnowledgeBasePersistence.ReadDetectedPatternsAsync(cancellationToken);
 
-            // Check if pattern already exists
             var duplicatePattern = existingPatterns.FirstOrDefault(p =>
-                ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription));
+                p.PatternDescription.Equals(pattern.PatternDescription, StringComparison.OrdinalIgnoreCase));
 
             if (duplicatePattern != null)
             {
-                // Update existing pattern
                 duplicatePattern.Frequency++;
                 duplicatePattern.LastDetected = DateTime.UtcNow;
 
-                // Add new examples
-                foreach (var symptom in patternResult.ExampleSymptoms)
+                foreach (var symptom in pattern.ExampleSymptoms)
                 {
                     if (!duplicatePattern.ExampleSymptoms.Contains(symptom, StringComparer.OrdinalIgnoreCase))
                     {
@@ -218,169 +203,78 @@ Seja específico e forneça informações que possam ser usadas para treinar o s
                     }
                 }
 
-                foreach (var solution in new[] { patternResult.Solution })
+                foreach (var sol in pattern.ExampleSolutions)
                 {
-                    if (!duplicatePattern.ExampleSolutions.Contains(solution, StringComparer.OrdinalIgnoreCase))
+                    if (!duplicatePattern.ExampleSolutions.Contains(sol, StringComparer.OrdinalIgnoreCase))
                     {
-                        duplicatePattern.ExampleSolutions.Add(solution);
+                        duplicatePattern.ExampleSolutions.Add(sol);
                     }
                 }
 
-                Logger.LogInfo($"Updated existing pattern: {patternResult.PatternDescription} (Frequency: {duplicatePattern.Frequency})");
+                // Limit example lists to 3 items to keep pattern record simple
+                if (duplicatePattern.ExampleSymptoms.Count > 3)
+                {
+                    duplicatePattern.ExampleSymptoms = duplicatePattern.ExampleSymptoms.Take(3).ToList();
+                }
+                if (duplicatePattern.ExampleSolutions.Count > 3)
+                {
+                    duplicatePattern.ExampleSolutions = duplicatePattern.ExampleSolutions.Take(3).ToList();
+                }
+
+                Logger.LogInfo($"[AGENT] Updated existing pattern: {patternResult.PatternDescription} (Freq: {duplicatePattern.Frequency})");
             }
             else
             {
-                // Add new pattern
+                // Limit initial list sizes to 3
+                pattern.ExampleSymptoms = pattern.ExampleSymptoms.Take(3).ToList();
+                pattern.ExampleSolutions = pattern.ExampleSolutions.Take(3).ToList();
                 existingPatterns.Add(pattern);
                 Logger.LogInfo($"Recorded new pattern: {patternResult.PatternDescription}");
             }
 
-            // Check if pattern should be promoted
-            if (KnowledgeBasePersistence.KnownIssueWritesEnabled &&
-                (patternResult.ReadyForAutomation || (existingPatterns.FirstOrDefault(p => 
-                    ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription))?.Frequency >= KnowledgeBasePersistence.PatternPromotionThreshold && 
-                    patternResult.SuccessRate >= 0.75)))
-            {
-                Logger.LogInfo($"Pattern '{patternResult.PatternDescription}' ready for promotion");
-                var patternToPromote = existingPatterns.FirstOrDefault(p =>
-                    ArePatternsSimilar(p.PatternDescription, patternResult.PatternDescription));
+            var patternToPromote = duplicatePattern ?? pattern;
+            await KnowledgeBasePersistence.PromotePatternToKnownIssueAsync(patternToPromote, cancellationToken);
 
-                if (patternToPromote != null)
-                {
-                    await KnowledgeBasePersistence.PromotePatternToKnownIssueAsync(patternToPromote, cancellationToken);
-                }
-            }
-
-            // Save updated patterns
             await KnowledgeBasePersistence.WriteDetectedPatternsAsync(existingPatterns, cancellationToken);
         }
         catch (Exception ex)
         {
-            Logger.LogError($"Failed to persist pattern: {ex.Message}");
+            Logger.LogError($"Error persisting pattern: {ex.Message}");
         }
     }
 
-    private static bool ShouldPersistPattern(PatternRecordResult patternResult)
+    private static bool ShouldPersistPattern(PatternRecord patternResult)
     {
         if (patternResult == null)
-        {
             return false;
-        }
 
         if (string.IsNullOrWhiteSpace(patternResult.PatternDescription))
-        {
             return false;
-        }
 
-        if (string.IsNullOrWhiteSpace(patternResult.PatternType) || patternResult.PatternType.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-        {
+        var lowerDesc = patternResult.PatternDescription.ToLower();
+        if (lowerDesc.Contains("generic") || lowerDesc.Contains("unknown") || lowerDesc.Contains("other") || lowerDesc.Contains("miscellaneous"))
             return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(patternResult.Solution))
-        {
-            return false;
-        }
-
-        if (patternResult.Solution.Contains("Solution needs verification", StringComparison.OrdinalIgnoreCase)
-            || patternResult.Solution.Contains("solução precisa de verificação", StringComparison.OrdinalIgnoreCase)
-            || patternResult.Solution.Contains("no known solution", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (patternResult.PatternDescription.StartsWith("Pattern involving", StringComparison.OrdinalIgnoreCase))
-        {
-            var descriptionKeywords = patternResult.PatternDescription
-                .Replace("Pattern involving", string.Empty, StringComparison.OrdinalIgnoreCase)
-                .Split(new[] { ' ', ',', '.', ';', ':', '-' }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(word => word.Length > 3)
-                .Where(word => !new[] { "pattern", "involving", "and", "or", "problema", "problemas", "cliente", "clientes" }
-                    .Contains(word, StringComparer.OrdinalIgnoreCase))
-                .ToList();
-
-            if (descriptionKeywords.Count < 3 && patternResult.Keywords.Count < 3)
-            {
-                return false;
-            }
-        }
 
         return true;
     }
 
-    /// <summary>
-    /// Displays pattern information to the user.
-    /// </summary>
-    private void DisplayPatternInfo(PatternRecordResult pattern)
+    private void DisplayPatternInfo(PatternRecord pattern)
     {
-        Logger.OutputSystem("\n" + new string('=', 80));
-        Logger.OutputSystem("[SISTEMA] Análise de Padrão Completada");
-        Logger.OutputSystem(new string('=', 80));
-        Logger.OutputSystem($"Tipo de Padrão: {pattern.PatternType}");
-        Logger.OutputSystem($"Descrição: {pattern.PatternDescription}");
+        if (pattern == null)
+            return;
 
-        if (!string.IsNullOrEmpty(pattern.TemporalInfo))
-        {
-            Logger.OutputSystem($"Característica Temporal: {pattern.TemporalInfo}");
-        }
-
-        Logger.OutputSystem($"Taxa de Sucesso: {pattern.SuccessRate:P}");
-        Logger.OutputSystem($"Pronto para Automação: {(pattern.ReadyForAutomation ? "✓ Sim" : "✗ Não")}");
-        Logger.OutputSystem(new string('=', 80) + "\n");
+        Logger.OutputAgent($"\n[Padrão Identificado]");
+        Logger.OutputAgent($"Descrição: {pattern.PatternDescription}");
+        Logger.OutputAgent($"Frequência: {pattern.Frequency}");
+        Logger.OutputAgent($"Últimos Sintomas: {string.Join(" | ", pattern.ExampleSymptoms)}");
+        Logger.OutputAgent($"Últimas Soluções: {string.Join(" | ", pattern.ExampleSolutions)}");
     }
 
-    /// <summary>
-    /// Creates an empty pattern record result when pattern recording fails.
-    /// </summary>
-    private static PatternRecordResult CreateEmptyResult()
+    private PatternRecord CreateEmptyResult()
     {
-        return new PatternRecordResult
+        return new PatternRecord
         {
-            PatternType = "Unknown",
-            PatternDescription = "Pattern analysis failed",
-            Keywords = new List<string>(),
-            ExampleSymptoms = new List<string>(),
-            Solution = string.Empty,
-            SuccessRate = 0,
-            ReadyForAutomation = false
+            PatternDescription = "Pattern analysis failed"
         };
-    }
-
-    /// <summary>
-    /// Checks if two pattern descriptions are similar based on common keywords.
-    /// </summary>
-    private static bool ArePatternsSimilar(string desc1, string desc2)
-    {
-        if (string.IsNullOrEmpty(desc1) || string.IsNullOrEmpty(desc2))
-            return false;
-
-        // Normalize and split into words
-        var words1 = desc1.ToLowerInvariant()
-            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
-            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length > 2) // Ignore short words
-            .ToHashSet();
-
-        var words2 = desc2.ToLowerInvariant()
-            .Replace("ç", "c").Replace("ã", "a").Replace("õ", "o").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
-            .Split(new[] { ' ', ',', '.', ';', ':', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length > 2)
-            .ToHashSet();
-
-        // Check for significant overlap
-        var intersection = words1.Intersect(words2).Count();
-        var union = words1.Union(words2).Count();
-
-        if (union == 0) return false;
-
-        var similarity = (double)intersection / union;
-
-        // Also check for key phrases
-        var keyPhrases = new[] { "vale refeicao", "nao recebimento", "beneficios", "pagamento", "atraso", "cliente" };
-        var hasCommonPhrase = keyPhrases.Any(phrase =>
-            desc1.ToLowerInvariant().Contains(phrase.Replace(" ", "")) &&
-            desc2.ToLowerInvariant().Contains(phrase.Replace(" ", "")));
-
-        return similarity >= 0.4 || hasCommonPhrase;
     }
 }
