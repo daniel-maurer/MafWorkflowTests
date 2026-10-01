@@ -61,6 +61,8 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
   const { getAccessToken } = useAuth();
   const session = useWorkflowSession(workflow, getAccessToken);
   const [tab, setTab] = useState<'context' | 'trace' | 'kb'>('context');
+  const [mobilePipelineOpen, setMobilePipelineOpen] = useState(false);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const navigate = useNavigate();
   const { snapshot, hubStatus, error } = session;
 
@@ -77,31 +79,15 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
     }));
   }, [snapshot.agents, workflow.agents]);
 
+  function closeMobileDrawers() {
+    setMobilePipelineOpen(false);
+    setMobileDetailsOpen(false);
+  }
+
   return (
     <div className="app-shell">
       <TopBar
         subtitle={workflow.subtitle ?? workflow.title}
-        center={
-          <div className="wf-pipeline-steps" data-testid="pipeline-steps">
-            {workflow.agents.map((a, i) => {
-              const st = pipelineState[i].state;
-              const cls = st === 'active' ? 'active' : st === 'done' ? 'done' : st === 'human' || st === 'wait' ? 'human' : '';
-              return (
-                <span key={a.id} className="wf-ps-arrow" style={{ display: 'contents' }}>
-                  <span
-                    className={`wf-ps ${cls}`}
-                    data-testid={`pipeline-step-${a.id}`}
-                    data-state={st}
-                  >
-                    <Icon name={a.icon} size={10} />
-                    {a.title.replace(/ Agent$/, '')}
-                  </span>
-                  {i < workflow.agents.length - 1 && <span className="wf-ps-arrow">›</span>}
-                </span>
-              );
-            })}
-          </div>
-        }
         right={
           <>
             <span
@@ -115,22 +101,24 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
                   hubStatus === 'failed' || hubStatus === 'disconnected' ? 'err' : hubStatus === 'reconnecting' ? 'warn' : ''
                 }`}
               />
-              {labelForStatus(hubStatus)}
+              <span className="topbar-status-text">{labelForStatus(hubStatus)}</span>
             </span>
             <button
               className="btn btn-danger"
               onClick={() => void session.reset()}
               data-testid="button-reset-session"
+              title="Reset session"
             >
               <Icon name="rotate-ccw" size={11} />
-              Reset
+              <span className="topbar-btn-text">Reset</span>
             </button>
             <button
               className="btn btn-ghost"
               onClick={() => navigate('/workflows')}
               data-testid="button-back-to-catalog"
+              title="Workflow catalog"
             >
-              Catalog
+              <span className="topbar-btn-text">Catalog</span>
             </button>
           </>
         }
@@ -140,10 +128,41 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
           {error}
         </div>
       )}
-      <div className="wf-main">
-        <AgentPipeline workflow={workflow} state={pipelineState} activeTools={collectActiveTools(snapshot.agents)} />
-        <ChatPanel session={session} />
-        <ContextPanel session={session} tab={tab} onTabChange={setTab} />
+      <div
+        className={`wf-main ${mobilePipelineOpen ? 'mobile-pipeline-open' : ''} ${
+          mobileDetailsOpen ? 'mobile-details-open' : ''
+        }`}
+      >
+        <AgentPipeline
+          workflow={workflow}
+          state={pipelineState}
+          activeTools={collectActiveTools(snapshot.agents)}
+          onClose={() => setMobilePipelineOpen(false)}
+        />
+        <ChatPanel
+          session={session}
+          onOpenPipeline={() => {
+            setMobileDetailsOpen(false);
+            setMobilePipelineOpen(true);
+          }}
+          onOpenDetails={() => {
+            setMobilePipelineOpen(false);
+            setMobileDetailsOpen(true);
+          }}
+        />
+        <ContextPanel
+          session={session}
+          tab={tab}
+          onTabChange={setTab}
+          onClose={() => setMobileDetailsOpen(false)}
+        />
+        {(mobilePipelineOpen || mobileDetailsOpen) && (
+          <div
+            className="wf-drawer-backdrop"
+            onClick={closeMobileDrawers}
+            aria-hidden="true"
+          />
+        )}
       </div>
     </div>
   );

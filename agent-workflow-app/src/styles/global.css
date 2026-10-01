@@ -81,15 +81,52 @@ a:hover {
 
 @media (max-width: 720px) {
   .topbar {
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-2) var(--space-3);
     gap: var(--space-2);
+    flex-wrap: nowrap;
+    align-items: center;
   }
-  .topbar > *:not(:last-child) {
-    min-width: 0;
+  .topbar-logo {
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+  }
+  .logo-text {
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+  .logo-sub {
+    display: none;
   }
   .topbar-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .topbar-status-text {
+    display: none;
+  }
+  .status-badge {
+    padding: 3px 6px;
+  }
+  .topbar-user-name {
+    display: none;
+  }
+  .topbar-user-badge {
+    padding: 3px 6px;
+  }
+  .topbar-btn-text {
+    display: none;
+  }
+  .topbar .btn {
+    padding: var(--space-1) var(--space-2);
+  }
+  .topbar .btn-danger,
+  .topbar .btn-ghost {
+    padding: 5px 8px;
   }
 }
 
@@ -323,4 +360,23 @@ a:hover {
   color: var(--color-text-faint);
   max-width: 30ch;
   line-height: 1.6;
+}
+
+/* ── Mobile Page Tweaks ──────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .workflows-main-container {
+    padding: var(--space-4) var(--space-3) !important;
+  }
+  .workflows-header-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: var(--space-3) !important;
+  }
+  .workflows-header-actions {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+  .form-card {
+    padding: var(--space-5);
+  }
 }

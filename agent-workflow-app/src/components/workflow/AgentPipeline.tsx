@@ -5,6 +5,7 @@ interface Props {
   workflow: WorkflowDefinition;
   state: { def: AgentDefinition; state: AgentState }[];
   activeTools: Set<string>;
+  onClose?: () => void;
 }
 
 const STATE_CLS: Record<AgentState, string> = {
@@ -23,11 +24,21 @@ const STATE_BADGE: Record<AgentState, { label: string; cls: string }> = {
   idle: { label: 'Idle', cls: '' },
 };
 
-export function AgentPipeline({ workflow, state, activeTools }: Props) {
+export function AgentPipeline({ workflow, state, activeTools, onClose }: Props) {
   return (
     <aside className="wf-sidebar" data-testid="agent-pipeline">
       <div className="wf-sidebar-header">
         <div className="wf-sidebar-title">Agent Pipeline</div>
+        {onClose && (
+          <button
+            type="button"
+            className="wf-drawer-close-btn"
+            onClick={onClose}
+            aria-label="Close pipeline drawer"
+          >
+            <Icon name="x" size={14} />
+          </button>
+        )}
       </div>
       <div className="wf-agents-scroll">
         {state.map((entry, idx) => {

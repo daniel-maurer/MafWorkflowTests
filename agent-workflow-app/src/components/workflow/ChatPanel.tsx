@@ -5,6 +5,8 @@ import type { WorkflowSessionApi } from '@/hooks/useWorkflowSession';
 
 interface Props {
   session: WorkflowSessionApi;
+  onOpenPipeline?: () => void;
+  onOpenDetails?: () => void;
 }
 
 const AV_BY_SENDER: Record<string, string> = {
@@ -34,11 +36,12 @@ function avClass(message: Message): string {
   return AV_BY_SENDER[message.senderName] ?? 'triage';
 }
 
-export function ChatPanel({ session }: Props) {
+export function ChatPanel({ session, onOpenPipeline, onOpenDetails }: Props) {
   const { snapshot, sendUserMessage, sendHumanMessage, runScenario, markSolved, ready, workflow } = session;
   const [input, setInput] = useState('');
   const [userInput, setUserInput] = useState('');
   const [humanInput, setHumanInput] = useState('');
+  const [mobileSplitView, setMobileSplitView] = useState<'user' | 'human'>('human');
   const singleRef = useRef<HTMLDivElement | null>(null);
   const userRef = useRef<HTMLDivElement | null>(null);
   const humanRef = useRef<HTMLDivElement | null>(null);
@@ -98,6 +101,18 @@ export function ChatPanel({ session }: Props) {
   return (
     <main className="wf-chat-area" data-testid="chat-area" data-mode={isSplit ? 'split' : 'single'}>
       <div className="wf-chat-header">
+        {onOpenPipeline && (
+          <button
+            type="button"
+            className="wf-mobile-top-btn"
+            onClick={onOpenPipeline}
+            aria-label="Open agents pipeline"
+            title="Agent Pipeline"
+          >
+            <Icon name="layers" size={13} />
+            <span className="wf-mobile-btn-text">Agents</span>
+          </button>
+        )}
         <div className="wf-av user">
           <Icon name="user" size={12} />
         </div>
@@ -112,7 +127,40 @@ export function ChatPanel({ session }: Props) {
         <span className="wf-ticket-chip" data-testid="text-ticket-id">
           {snapshot.ticketId || '#TKT-····'}
         </span>
+        {onOpenDetails && (
+          <button
+            type="button"
+            className="wf-mobile-top-btn"
+            onClick={onOpenDetails}
+            aria-label="Open details and KB"
+            title="Details & Knowledge Base"
+          >
+            <Icon name="sliders" size={13} />
+            <span className="wf-mobile-btn-text">Details</span>
+          </button>
+        )}
       </div>
+
+      {isSplit && (
+        <div className="wf-mobile-split-tabs">
+          <button
+            type="button"
+            className={`wf-mobile-split-tab ${mobileSplitView === 'user' ? 'active' : ''}`}
+            onClick={() => setMobileSplitView('user')}
+          >
+            <Icon name="user" size={11} />
+            Customer View
+          </button>
+          <button
+            type="button"
+            className={`wf-mobile-split-tab ${mobileSplitView === 'human' ? 'active' : ''}`}
+            onClick={() => setMobileSplitView('human')}
+          >
+            <Icon name="headphones" size={11} />
+            Human Agent View
+          </button>
+        </div>
+      )}
 
       <div className="wf-chat-body">
         {!isSplit && (
@@ -158,7 +206,7 @@ export function ChatPanel({ session }: Props) {
                   <Icon name="send" size={13} />
                 </button>
               </form>
-              <div className="wf-input-hint" data-testid="text-input-hint">
+              <div className={`wf-input-hint ${!isClosed ? 'desktop-only-hint' : ''}`} data-testid="text-input-hint">
                 {isClosed
                   ? 'Session closed. Click Reset to start again.'
                   : 'Enter to send · Shift+Enter for new line'}
@@ -168,9 +216,9 @@ export function ChatPanel({ session }: Props) {
         )}
 
         {isSplit && (
-          <div className="wf-split-chat" data-testid="split-chat">
+          <div className="wf-split-chat" data-testid="split-chat" data-mobile-view={mobileSplitView}>
             {/* USER PANE */}
-            <div className="wf-split-pane">
+            <div className={`wf-split-pane ${mobileSplitView === 'user' ? 'mobile-active' : 'mobile-hidden'}`}>
               <div className="wf-split-pane-header">
                 <div className="wf-av user" style={{ width: 20, height: 20 }}>
                   <Icon name="user" size={10} />
@@ -216,7 +264,7 @@ export function ChatPanel({ session }: Props) {
             </div>
             <div className="wf-split-divider" />
             {/* HUMAN PANE */}
-            <div className="wf-split-pane">
+            <div className={`wf-split-pane ${mobileSplitView === 'human' ? 'mobile-active' : 'mobile-hidden'}`}>
               <div className="wf-split-pane-header">
                 <div className="wf-av human" style={{ width: 20, height: 20 }}>
                   <Icon name="headphones" size={10} />

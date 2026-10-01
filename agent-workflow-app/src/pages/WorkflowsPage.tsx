@@ -62,6 +62,7 @@ export function WorkflowsPage() {
     <div className="app-shell">
       <TopBar subtitle="Workflow Catalog" />
       <main
+        className="workflows-main-container"
         style={{
           flex: 1,
           overflow: 'auto',
@@ -71,6 +72,7 @@ export function WorkflowsPage() {
       >
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           <div
+            className="workflows-header-row"
             style={{
               display: 'flex',
               alignItems: 'flex-end',
@@ -95,7 +97,7 @@ export function WorkflowsPage() {
                 Select one to launch its execution view. Toggle additional workflows to compare configurations.
               </p>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <div className="workflows-header-actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <span className="status-badge" data-testid="text-selected-count">
                 {selected.size} selected
               </span>

@@ -29,7 +29,11 @@ export function TopBar({ subtitle = 'Microsoft Agent Framework', center, right }
         </div>
       </Link>
 
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>{center}</div>
+      {center ? (
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>{center}</div>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
 
       <div className="topbar-actions">
         {right}
@@ -44,18 +48,19 @@ export function TopBar({ subtitle = 'Microsoft Agent Framework', center, right }
         </button>
         {user && (
           <>
-            <span className="status-badge" data-testid="text-user-name">
+            <span className="status-badge topbar-user-badge" data-testid="text-user-name">
               <Icon name="user" size={11} />
-              {user.name}
+              <span className="topbar-user-name">{user.name}</span>
             </span>
             <button
-              className="btn btn-ghost"
+              className="btn btn-ghost topbar-logout-btn"
               onClick={() => void logout()}
               data-testid="button-logout"
               aria-label="Sign out"
+              title="Sign out"
             >
               <Icon name="log-out" size={12} />
-              Sign out
+              <span className="topbar-btn-text">Sign out</span>
             </button>
           </>
         )}

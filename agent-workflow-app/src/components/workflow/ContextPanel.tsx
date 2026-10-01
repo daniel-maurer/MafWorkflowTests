@@ -8,9 +8,10 @@ interface Props {
   session: WorkflowSessionApi;
   tab: Tab;
   onTabChange: (tab: Tab) => void;
+  onClose?: () => void;
 }
 
-export function ContextPanel({ session, tab, onTabChange }: Props) {
+export function ContextPanel({ session, tab, onTabChange, onClose }: Props) {
   const { snapshot } = session;
 
   const statusClass = useMemo(() => {
@@ -34,19 +35,31 @@ export function ContextPanel({ session, tab, onTabChange }: Props) {
 
   return (
     <aside className="wf-right-panel" data-testid="context-panel">
-      <div className="wf-right-tabs" role="tablist">
-        {tabs.map((t) => (
+      <div className="wf-right-tabs-wrap">
+        <div className="wf-right-tabs" role="tablist">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`wf-tab-btn ${tab === t.key ? 'active' : ''}`}
+              onClick={() => onTabChange(t.key)}
+              data-testid={`button-${t.testId}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {onClose && (
           <button
-            key={t.key}
-            role="tab"
-            aria-selected={tab === t.key}
-            className={`wf-tab-btn ${tab === t.key ? 'active' : ''}`}
-            onClick={() => onTabChange(t.key)}
-            data-testid={`button-${t.testId}`}
+            type="button"
+            className="wf-drawer-close-btn"
+            onClick={onClose}
+            aria-label="Close details drawer"
           >
-            {t.label}
+            <Icon name="x" size={14} />
           </button>
-        ))}
+        )}
       </div>
 
       {tab === 'context' && (
