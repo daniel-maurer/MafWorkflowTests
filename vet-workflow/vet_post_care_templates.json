@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "templates": [
+    {
+      "id": "castracao",
+      "title": "Cuidados Pós-Operatórios: Castração",
+      "procedureType": "castração",
+      "summary": "Repouso obrigatório de 7 a 10 dias. Uso ininterrupto de colar elizabetano ou roupa cirúrgica para evitar lambedura dos pontos. Higienizar a incisão 2x ao dia com gaze e soro fisiológico. Não molhar o curativo. Retirada de pontos em 10 a 14 dias em retorno presencial. Seguir rigorosamente os analgésicos e anti-inflamatórios prescritos na receita médica.",
+      "redFlags": "Secreção com pus, inchaço excessivo, abertura dos pontos ou apatia intensa devem ser informados imediatamente ao veterinário."
+    },
+    {
+      "id": "vacinacao",
+      "title": "Orientações Pós-Vacinação",
+      "procedureType": "vacina",
+      "summary": "O animal pode apresentar leve dor no local da aplicação, sonolência e leve redução de apetite nas primeiras 24 horas. Mantenha repouso e água fresca à disposição. Evite banhos e passeios em locais públicos nas primeiras 48 horas.",
+      "redFlags": "Inchaço facial, vômitos repetidos, dificuldade para respirar ou desmaio são sinais raros de reação anafilática e exigem atendimento imediato."
+    },
+    {
+      "id": "limpeza_dentaria",
+      "title": "Cuidados Pós-Profilaxia Dentária (Tártaro)",
+      "procedureType": "limpeza dentária",
+      "summary": "Oferecer alimentação úmida ou ração amolecida em água morna nos primeiros 2 a 3 dias se houver sensibilidade gengival. Evitar petiscos duros e brinquedos rígidos por 5 dias. Administrar os antibióticos e analgésicos prescritos pelo veterinário nos horários corretos.",
+      "redFlags": "Sangramento bucal contínuo ou recusa persistente de água após 24h requerem contato com o veterinário."
+    },
+    {
+      "id": "vermifugacao",
+      "title": "Orientações de Vermifugação",
+      "procedureType": "vermifugação",
+      "summary": "Administrar a dose recomendada de acordo com o peso aferido. Pode ocorrer eliminação visível de parasitas nas fezes nas primeiras 48h. Em animais com alta carga parasitária, pode haver fezes mais pastosas passageiras.",
+      "redFlags": "Vômito imediato da medicação ou diarreia com sangue necessitam de avaliação profissional."
+    }
+  ]
+}

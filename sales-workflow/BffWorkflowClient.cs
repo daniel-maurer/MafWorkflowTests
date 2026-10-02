@@ -1,46 +1,54 @@
 using System.Collections.Concurrent;
-using System.Threading.Channels;
-using System.Linq;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.AI;
+using SalesWorkflow.Models;
 
-namespace SupportWorkflow;
+namespace SalesWorkflow;
 
 internal sealed class BffWorkflowClient : IAsyncDisposable
 {
     private readonly WorkflowConfiguration _configuration;
     private readonly IChatClient _chatClient;
+    private readonly Func<IUserInteractor, Workflow> _workflowFactory;
     private readonly HubConnection _connection;
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
-    private readonly Func<IUserInteractor, Workflow> _workflowFactory;
 
-
-    public BffWorkflowClient(WorkflowConfiguration configuration, IChatClient chatClient, Func<IUserInteractor, Workflow> workflowFactory)
+    public BffWorkflowClient(
+        WorkflowConfiguration configuration,
+        IChatClient chatClient,
+        Func<IUserInteractor, Workflow> workflowFactory)
     {
-        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _chatClient = chatClient ?? throw new ArgumentNullException(nameof(chatClient));
-        _workflowFactory = workflowFactory ?? throw new ArgumentNullException(nameof(workflowFactory));
+        _configuration = configuration;
+        _chatClient = chatClient;
+        _workflowFactory = workflowFactory;
+
         _connection = new HubConnectionBuilder()
-            .WithUrl(configuration.BffBaseUrl, options =>
+            .WithUrl(_configuration.BffBaseUrl, options =>
             {
-                options.AccessTokenProvider = () => Task.FromResult("mock-token:maf-worker")!;
+                options.Headers.Add("Authorization", "Bearer mock-token:maf-sales-worker");
             })
             .WithAutomaticReconnect()
             .Build();
 
-        ConfigureHandlers();
+        RegisterHubHandlers();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         await _connection.StartAsync(cancellationToken);
-        await _connection.InvokeAsync("RegisterWorker", _configuration.WorkerId, new[] { "support", "incident-triage" }, cancellationToken);
-        await PublishTraceAsync(string.Empty, "MAF worker connected to BFF.");
+        await _connection.InvokeAsync(
+            "RegisterWorker",
+            _configuration.WorkerId,
+            new[] { "sales-assistant" },
+            cancellationToken);
+
+        await PublishTraceAsync(string.Empty, "MAF Sales Worker connected to BFF.");
     }
 
-    private void ConfigureHandlers()
+    private void RegisterHubHandlers()
     {
         _connection.On<MafStartWorkflowCommand>("startWorkflow", async command =>
         {
@@ -117,7 +125,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private async Task HandleStartWorkflowAsync(MafStartWorkflowCommand command)
     {
-        var session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id));
+        var session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id, command.WorkflowId));
         await session.StartAsync(command.InitialMessage ?? string.Empty);
 
         if (!string.IsNullOrWhiteSpace(command.InitialMessage))
@@ -125,14 +133,14 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await PublishMessageAsync(command.SessionId, CreateUserMessage(command.InitialMessage));
         }
 
-        await PublishTraceAsync(command.SessionId, "Workflow started.");
-        await PublishAgentStateAsync(command.SessionId, "triage", "active", "Running");
+        await PublishTraceAsync(command.SessionId, "Fluxo comercial MAF iniciado.");
+        await PublishAgentStateAsync(command.SessionId, "intent", "active", "Running");
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
-            Status = "triaging",
-            ChatTitle = "MAF workflow started",
-            ChatSubtitle = "Waiting for input and triage processing.",
-            ActiveAgentId = "triage",
+            Status = "analyzing-intent",
+            ChatTitle = "Sales Assistant",
+            ChatSubtitle = "Identificando intenção e catálogo...",
+            ActiveAgentId = "intent",
             HumanMode = false
         });
     }
@@ -146,7 +154,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         }
 
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
-        await PublishTraceAsync(command.SessionId, "User message received.");
+        await PublishTraceAsync(command.SessionId, "Mensagem do cliente recebida.");
         await session.EnqueueMessageAsync(command.Text);
     }
 
@@ -164,7 +172,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Type = "message",
             Side = "left",
             SenderType = "human",
-            AgentId = "human-support",
+            AgentId = "human-seller",
             SystemStyle = null,
             Text = command.Text,
             Tools = Array.Empty<object>(),
@@ -172,8 +180,9 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             SplitMirror = true,
             Audience = MessageAudience.Both,
         });
+
         await session.EnqueueMessageAsync(command.Text);
-        await PublishTraceAsync(command.SessionId, "Human message received and routed to session.");
+        await PublishTraceAsync(command.SessionId, "Mensagem do vendedor roteada para a sessão.");
     }
 
     private async Task HandleRunScenarioAsync(MafRunScenarioCommand command)
@@ -184,31 +193,25 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        await PublishTraceAsync(command.SessionId, $"Scenario '{command.ScenarioId}' requested.");
+        await PublishTraceAsync(command.SessionId, $"Cenário '{command.ScenarioId}' disparado.");
         await session.EnqueueMessageAsync(command.ScenarioId);
     }
 
     private async Task HandleMarkSolvedAsync(MafSessionCommand command)
     {
-        // The frontend "Mark as Solved" button signals the running workflow that the
-        // human-support exchange is resolved. We enqueue a control token instead of
-        // tearing down the session, so the workflow finishes its remaining stages
-        // (Pattern Record + Done context) cleanly.
         if (_sessions.TryGetValue(command.SessionId, out var session))
         {
             await session.EnqueueMessageAsync(WorkflowControlTokens.MarkResolved);
-            await PublishTraceAsync(command.SessionId, "User marked the issue as resolved.", "success");
+            await PublishTraceAsync(command.SessionId, "Atendimento marcado como concluído.", "success");
         }
         else
         {
-            // No live session — fall back to the previous behaviour so the UI still flips
-            // to a resolved state when the workflow has already completed.
             await PublishPublicEventAsync(command.SessionId, "splitMode", false);
             await PublishContextAsync(command.SessionId, new MafContextPayload
             {
                 Status = "resolved",
-                ChatTitle = "Resolved",
-                ChatSubtitle = "The session was marked solved.",
+                ChatTitle = "Concluído",
+                ChatSubtitle = "Atendimento finalizado.",
                 ActiveAgentId = string.Empty,
                 HumanMode = false
             });
@@ -225,8 +228,8 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
             Status = "idle",
-            ChatTitle = "Workflow reset",
-            ChatSubtitle = "The session has been reset.",
+            ChatTitle = "Workflow reiniciado",
+            ChatSubtitle = "Sessão reinicializada.",
             ActiveAgentId = string.Empty,
             HumanMode = false
         });
@@ -252,12 +255,13 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         await PublishPublicEventAsync(sessionId, "agent", payload);
     }
+
     private async Task PublishKbAsync(string sessionId, IEnumerable<MafKbPayload> payload)
     {
         await PublishPublicEventAsync(sessionId, "kb", payload);
     }
 
-    private async Task PublishTypingAsync(string sessionId, bool on, string label = "MAF Agent typing", string container = "msgs")
+    private async Task PublishTypingAsync(string sessionId, bool on, string label = "Consultor digitando...", string container = "msgs")
     {
         await PublishPublicEventAsync(sessionId, "typing", new MafTypingPayload
         {
@@ -299,7 +303,6 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private static string GenerateId(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
 
-
     private MafMessagePayload CreateUserMessage(string text)
     {
         return new MafMessagePayload
@@ -328,37 +331,45 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             AgentId = agentId,
             SystemStyle = null,
             Text = text,
-            Tools = (tools ?? Array.Empty<AgentToolCall>())
-                .Select(t => (object)new MafToolCallPayload { Name = t.Name, Args = t.Args, Ok = t.Ok })
-                .ToArray(),
+            Tools = tools?.Select(tool => new MafToolCallPayload
+            {
+                Name = tool.Name,
+                Args = tool.Args,
+                Ok = tool.Ok
+            }).ToArray() ?? Array.Empty<MafToolCallPayload>(),
             CreatedAt = DateTime.UtcNow,
-            SplitMirror = true,
+            SplitMirror = false,
             Audience = audience,
         };
     }
 
-    private MafMessagePayload CreateSystemMessage(string text, string systemStyle, string audience)
+    private MafMessagePayload CreateSystemMessage(string text, string systemStyle, string audience = MessageAudience.Both)
     {
         return new MafMessagePayload
         {
             Id = GenerateId("msg"),
             Type = "system",
-            Side = "center",
+            Side = "left",
             SenderType = "system",
             AgentId = null,
             SystemStyle = systemStyle,
             Text = text,
             Tools = Array.Empty<object>(),
             CreatedAt = DateTime.UtcNow,
-            SplitMirror = true,
+            SplitMirror = false,
             Audience = audience,
         };
     }
 
-    private WorkflowSession CreateSession(string sessionId)
+    private WorkflowSession CreateSession(string sessionId, string workflowId = "sales-assistant")
     {
         var interactor = new SessionWorkflowInteractor(sessionId, this);
-        return new WorkflowSession(sessionId, _workflowFactory(interactor), this, interactor);
+        Workflow workflow = workflowId switch
+        {
+            "sales-assistant" => WorkflowFactory.BuildSalesWorkflow(_chatClient, interactor),
+            _ => _workflowFactory(interactor)
+        };
+        return new WorkflowSession(sessionId, workflow, this, interactor);
     }
 
     private sealed class WorkflowSession : IAsyncDisposable
@@ -442,14 +453,8 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             _parent = parent;
         }
 
-
         public async Task SendUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
-            if (IsConsolePrompt(prompt) && (tools is null || tools.Count == 0))
-            {
-                return;
-            }
-
             await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience));
         }
 
@@ -460,25 +465,12 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
         public async Task<string> GetUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
-            if (!IsConsolePrompt(prompt))
+            if (!string.IsNullOrWhiteSpace(prompt))
             {
                 await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience));
             }
 
             return await _incomingMessages.Reader.ReadAsync(cancellationToken);
-        }
-
-        private static bool IsConsolePrompt(string? prompt)
-        {
-            if (string.IsNullOrWhiteSpace(prompt))
-            {
-                return true;
-            }
-
-            var trimmed = prompt.Trim();
-            return trimmed.StartsWith("[ATENDENTE", StringComparison.OrdinalIgnoreCase)
-                || trimmed.StartsWith("[USUÁRIO", StringComparison.OrdinalIgnoreCase)
-                || trimmed.StartsWith("[SISTEMA", StringComparison.OrdinalIgnoreCase);
         }
 
         public async Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default)
@@ -515,7 +507,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
         public async Task PublishKnowledgeBaseAsync(IReadOnlyList<KbEntry> items, CancellationToken cancellationToken = default)
         {
-            var payload = (items ?? Array.Empty<KbEntry>()).Select(item => new MafKbPayload
+            var payload = items.Select(item => new MafKbPayload
             {
                 Id = string.IsNullOrWhiteSpace(item.Id) ? GenerateId("kb") : item.Id,
                 Title = item.Title,
@@ -546,78 +538,56 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private async Task PublishWorkflowOutputAsync(string sessionId, object? outputData)
     {
-        if (outputData is TriageResult triageResult)
+        switch (outputData)
         {
-            // Triage outputs are internal agent-facing classifications — route them only to the
-            // attendant pane (see TriageExecutor for the rationale).
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                string.IsNullOrWhiteSpace(triageResult.Summary) ? "Issue classified." : triageResult.Summary,
-                "triage", null, MessageAudience.Attendant));
-            return;
-        }
+            case IntentResult intentResult:
+                await PublishTraceAsync(
+                    sessionId,
+                    $"Triagem: {intentResult.Intent} | Sentimento: {intentResult.CustomerSentiment}",
+                    "info");
+                break;
 
-        if (outputData is FrequentProblemResult frequentProblemResult)
-        {
-            // The Freq. Problem Agent's verdict ("Problema reconhecido" / "Encaminhando para
-            // suporte humano") is operational telemetry rather than a customer-facing reply.
-            // Keep it on the attendant side; the customer reads the Resolution / Human-Support
-            // message that follows.
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                frequentProblemResult.MessageForUser ?? "Analyzing issue against known problems.",
-                "freq", null, MessageAudience.Attendant));
+            case CatalogResult catalogResult:
+                var summary = catalogResult.HasResults
+                    ? $"{catalogResult.Products.Count} produto(s) localizado(s) no estoque."
+                    : "Nenhum produto correspondente.";
+                await PublishTraceAsync(sessionId, $"Catálogo: {summary}", catalogResult.HasResults ? "success" : "warning");
+                break;
 
-            if (frequentProblemResult.MatchedIssue != null)
-            {
-                var kbEntry = new MafKbPayload
-                {
-                    Id = GenerateId("kb"),
-                    Title = frequentProblemResult.MatchedIssue.Problem,
-                    Category = string.Empty,
-                    Score = frequentProblemResult.MatchedIssue.SuccessRate,
-                    Summary = frequentProblemResult.MatchedIssue.Symptoms.FirstOrDefault() ?? frequentProblemResult.MatchedIssue.Solution ?? string.Empty,
-                    ResolutionType = frequentProblemResult.MatchedIssue.McpAction ?? "knowledge-base",
-                    Tags = frequentProblemResult.MatchedIssue.Keywords.ToArray()
-                };
-                await PublishKbAsync(sessionId, new[] { kbEntry });
-            }
-            return;
-        }
+            case SalesAdviceResult adviceResult:
+                await PublishTraceAsync(
+                    sessionId,
+                    $"Consultoria de Vendas: {adviceResult.SuggestedComplements.Count} complementos, {adviceResult.SuggestedKits.Count} kits.",
+                    "info");
+                break;
 
-        if (outputData is ResolutionResult resolutionResult)
-        {
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                resolutionResult.MessageForUser ?? "Resolution completed.",
-                "res",
-                (resolutionResult.ActionsExecuted ?? new List<string>())
-                    .Where(action => !string.IsNullOrWhiteSpace(action))
-                    .Select(action => new AgentToolCall { Name = action, Args = string.Empty, Ok = resolutionResult.IsResolved })
-                    .ToList()));
-            return;
-        }
+            case QuoteResult quoteResult:
+                await PublishTraceAsync(
+                    sessionId,
+                    $"Orçamento {quoteResult.QuoteId} consolidado: Total R$ {quoteResult.Total:N2}.",
+                    "success");
+                break;
 
-        if (outputData is PatternRecord patternRecordResult)
-        {
-            // Pattern descriptions are internal analytics, not customer-facing replies.
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                patternRecordResult.PatternDescription ?? "Pattern recorded.",
-                "pattern", null, MessageAudience.Attendant));
-            return;
-        }
+            case FollowUpResult followUpResult:
+                await PublishTraceAsync(
+                    sessionId,
+                    $"Follow-up agendado: {followUpResult.FollowUpType} via {followUpResult.Channel}.",
+                    "info");
+                break;
 
-        if (outputData is string text)
-        {
-            // Strings yielded by ResolutionExecutor / TriageExecutor are intermediate progress
-            // text. The dedicated typed-output branches above already publish the canonical
-            // agent message, so the string path is intentionally a no-op to avoid duplicated
-            // "MAF Agent" rows in the chat.
-            return;
-        }
+            case SalesResolutionResult resolutionResult:
+                await PublishTraceAsync(
+                    sessionId,
+                    $"Atendimento comercial: {resolutionResult.ResolutionType} (Resolvido={resolutionResult.IsResolved}).",
+                    resolutionResult.IsResolved ? "success" : "info");
+                break;
 
-        if (outputData != null)
-        {
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                outputData.ToString() ?? string.Empty,
-                "maf", null));
+            case SalesRecord salesRecord:
+                await PublishTraceAsync(
+                    sessionId,
+                    $"Sessão comercial finalizada: {salesRecord.Outcome} | Sentimento={salesRecord.CustomerSentiment}.",
+                    "success");
+                break;
         }
     }
 
@@ -627,30 +597,22 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         {
             await session.DisposeAsync();
         }
-
+        _sessions.Clear();
         await _connection.DisposeAsync();
     }
 }
 
-internal sealed class MafEventEnvelope
+// === Payload DTOs ===
+public sealed class MafEventEnvelope
 {
-    [JsonPropertyName("sessionId")]
-    public string SessionId { get; set; } = string.Empty;
-
-    [JsonPropertyName("eventType")]
-    public string EventType { get; set; } = string.Empty;
-
-    [JsonPropertyName("payload")]
-    public object Payload { get; set; } = new { };
-
-    [JsonPropertyName("occurredAt")]
-    public DateTime OccurredAt { get; set; }
-
-    [JsonPropertyName("sequenceId")]
-    public string SequenceId { get; set; } = string.Empty;
+    [JsonPropertyName("sessionId")] public string SessionId { get; set; } = string.Empty;
+    [JsonPropertyName("eventType")] public string EventType { get; set; } = string.Empty;
+    [JsonPropertyName("payload")] public object? Payload { get; set; }
+    [JsonPropertyName("occurredAt")] public DateTime OccurredAt { get; set; }
+    [JsonPropertyName("sequenceId")] public string SequenceId { get; set; } = string.Empty;
 }
 
-internal sealed class MafMessagePayload
+public sealed class MafMessagePayload
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("type")] public string Type { get; set; } = string.Empty;
@@ -659,25 +621,20 @@ internal sealed class MafMessagePayload
     [JsonPropertyName("agentId")] public string? AgentId { get; set; }
     [JsonPropertyName("systemStyle")] public string? SystemStyle { get; set; }
     [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
-    [JsonPropertyName("tools")] public object[] Tools { get; set; } = Array.Empty<object>();
+    [JsonPropertyName("tools")] public IReadOnlyList<object> Tools { get; set; } = Array.Empty<object>();
     [JsonPropertyName("createdAt")] public DateTime CreatedAt { get; set; }
     [JsonPropertyName("splitMirror")] public bool SplitMirror { get; set; }
     [JsonPropertyName("audience")] public string Audience { get; set; } = MessageAudience.Both;
 }
 
-internal sealed class MafToolCallPayload
+public sealed class MafToolCallPayload
 {
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    [JsonPropertyName("args")]
-    public string Args { get; set; } = string.Empty;
-
-    [JsonPropertyName("ok")]
-    public bool Ok { get; set; } = true;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("args")] public string Args { get; set; } = string.Empty;
+    [JsonPropertyName("ok")] public bool Ok { get; set; } = true;
 }
 
-internal sealed class MafTracePayload
+public sealed class MafTracePayload
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("time")] public DateTime Time { get; set; }
@@ -685,140 +642,51 @@ internal sealed class MafTracePayload
     [JsonPropertyName("level")] public string Level { get; set; } = "info";
 }
 
-internal sealed class MafTypingPayload
+public sealed class MafTypingPayload
 {
-    [JsonPropertyName("container")]
-    public string Container { get; set; } = string.Empty;
-
-    [JsonPropertyName("label")]
-    public string Label { get; set; } = string.Empty;
-
-    [JsonPropertyName("on")]
-    public bool On { get; set; }
+    [JsonPropertyName("container")] public string Container { get; set; } = "msgs";
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("on")] public bool On { get; set; }
 }
 
-internal sealed class MafAgentPayload
+public sealed class MafAgentPayload
 {
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = string.Empty;
-
-    [JsonPropertyName("state")]
-    public string State { get; set; } = string.Empty;
-
-    [JsonPropertyName("tag")]
-    public string Tag { get; set; } = string.Empty;
-
-    [JsonPropertyName("activeTools")]
-    public object[] ActiveTools { get; set; } = Array.Empty<object>();
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("state")] public string State { get; set; } = string.Empty;
+    [JsonPropertyName("tag")] public string Tag { get; set; } = string.Empty;
+    [JsonPropertyName("activeTools")] public IReadOnlyList<object> ActiveTools { get; set; } = Array.Empty<object>();
 }
 
-internal sealed class MafContextPayload
+public sealed class MafContextPayload
 {
-    [JsonPropertyName("status")]
-    public string Status { get; set; } = string.Empty;
-
-    [JsonPropertyName("chatTitle")]
-    public string ChatTitle { get; set; } = string.Empty;
-
-    [JsonPropertyName("chatSubtitle")]
-    public string ChatSubtitle { get; set; } = string.Empty;
-
-    [JsonPropertyName("activeAgentId")]
-    public string ActiveAgentId { get; set; } = string.Empty;
-
-    [JsonPropertyName("category")]
-    public string? Category { get; set; }
-
-    [JsonPropertyName("confidence")]
-    public double? Confidence { get; set; }
-
-    [JsonPropertyName("intent")]
-    public string? Intent { get; set; }
-
-    [JsonPropertyName("humanMode")]
-    public bool HumanMode { get; set; }
-
-    [JsonPropertyName("resolutionSteps")]
-    public object[]? ResolutionSteps { get; set; }
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("chatTitle")] public string ChatTitle { get; set; } = string.Empty;
+    [JsonPropertyName("chatSubtitle")] public string ChatSubtitle { get; set; } = string.Empty;
+    [JsonPropertyName("activeAgentId")] public string ActiveAgentId { get; set; } = string.Empty;
+    [JsonPropertyName("humanMode")] public bool HumanMode { get; set; }
 }
 
-internal sealed class MafKbPayload
+public sealed class MafKbPayload
 {
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = string.Empty;
-
-    [JsonPropertyName("title")]
-    public string Title { get; set; } = string.Empty;
-
-    [JsonPropertyName("category")]
-    public string Category { get; set; } = string.Empty;
-
-    [JsonPropertyName("score")]
-    public double Score { get; set; }
-
-    [JsonPropertyName("summary")]
-    public string Summary { get; set; } = string.Empty;
-
-    [JsonPropertyName("resolutionType")]
-    public string ResolutionType { get; set; } = string.Empty;
-
-    [JsonPropertyName("tags")]
-    public string[] Tags { get; set; } = Array.Empty<string>();
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("category")] public string Category { get; set; } = string.Empty;
+    [JsonPropertyName("score")] public double Score { get; set; }
+    [JsonPropertyName("summary")] public string Summary { get; set; } = string.Empty;
+    [JsonPropertyName("resolutionType")] public string ResolutionType { get; set; } = string.Empty;
+    [JsonPropertyName("tags")] public IReadOnlyList<string> Tags { get; set; } = Array.Empty<string>();
 }
 
-internal sealed class MafStartWorkflowCommand
-{
-    [JsonPropertyName("sessionId")]
-    public string SessionId { get; set; } = string.Empty;
+public sealed record MafStartWorkflowCommand(
+    string SessionId,
+    string WorkflowId,
+    string TicketId,
+    string? InitialMessage,
+    string WorkflowName,
+    string Version,
+    string InputSchema);
 
-    [JsonPropertyName("workflowId")]
-    public string WorkflowId { get; set; } = string.Empty;
-
-    [JsonPropertyName("ticketId")]
-    public string TicketId { get; set; } = string.Empty;
-
-    [JsonPropertyName("initialMessage")]
-    public string? InitialMessage { get; set; }
-
-    [JsonPropertyName("mafWorkflowName")]
-    public string MafWorkflowName { get; set; } = string.Empty;
-
-    [JsonPropertyName("mafWorkflowVersion")]
-    public string MafWorkflowVersion { get; set; } = string.Empty;
-
-    [JsonPropertyName("inputSchema")]
-    public string InputSchema { get; set; } = string.Empty;
-}
-
-internal sealed class MafUserMessageCommand
-{
-    [JsonPropertyName("sessionId")]
-    public string SessionId { get; set; } = string.Empty;
-
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = string.Empty;
-}
-
-internal sealed class MafHumanMessageCommand
-{
-    [JsonPropertyName("sessionId")]
-    public string SessionId { get; set; } = string.Empty;
-
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = string.Empty;
-}
-
-internal sealed class MafRunScenarioCommand
-{
-    [JsonPropertyName("sessionId")]
-    public string SessionId { get; set; } = string.Empty;
-
-    [JsonPropertyName("scenarioId")]
-    public string ScenarioId { get; set; } = string.Empty;
-}
-
-internal sealed class MafSessionCommand
-{
-    [JsonPropertyName("sessionId")]
-    public string SessionId { get; set; } = string.Empty;
-}
+public sealed record MafUserMessageCommand(string SessionId, string Text);
+public sealed record MafHumanMessageCommand(string SessionId, string Text);
+public sealed record MafRunScenarioCommand(string SessionId, string ScenarioId);
+public sealed record MafSessionCommand(string SessionId);

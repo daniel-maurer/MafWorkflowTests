@@ -1,0 +1,162 @@
+{
+  "id": "sales-assistant",
+  "title": "Sales Assistant",
+  "subtitle": "Assistente Comercial Inteligente — Microsoft Agent Framework",
+  "description": "Identificação de intenção, busca no catálogo, sugestões de venda cruzada, orçamentos, follow-up e handoff para vendedor.",
+  "icon": "tag",
+  "colorTheme": "success",
+  "agents": [
+    {
+      "id": "intent",
+      "icon": "git-branch",
+      "title": "Classificador de Intenção",
+      "description": "Analisa a mensagem do cliente e classifica a intenção comercial.",
+      "colorTheme": "primary",
+      "order": 1,
+      "tools": []
+    },
+    {
+      "id": "catalog",
+      "icon": "database",
+      "title": "Consultor de Catálogo",
+      "description": "Pesquisa produtos por SKU, nome, cor, tamanho e disponibilidade em estoque.",
+      "colorTheme": "primary",
+      "order": 2,
+      "tools": ["SearchProducts", "CheckStock", "GetPrice", "GetProductImage", "GetCompatibleProducts"]
+    },
+    {
+      "id": "sales-advisor",
+      "icon": "pickaxe",
+      "title": "Consultor de Vendas",
+      "description": "Sugere complementos, alternativas e kits com desconto promocional.",
+      "colorTheme": "success",
+      "order": 3,
+      "tools": ["GetCompatibleProducts", "GetPrice"]
+    },
+    {
+      "id": "quote",
+      "icon": "file-search",
+      "title": "Gerador de Orçamento",
+      "description": "Monta proposta comercial formal com preços, descontos e validade.",
+      "colorTheme": "warning",
+      "order": 4,
+      "tools": ["GenerateQuote", "ApplyDiscount", "SendQuote"]
+    },
+    {
+      "id": "follow-up",
+      "icon": "pen-line",
+      "title": "Agente de Follow-Up",
+      "description": "Agenda retorno ao cliente para acompanhar propostas e recuperar carrinhos.",
+      "colorTheme": "primary",
+      "order": 5,
+      "tools": ["ScheduleFollowUp", "GetAbandonedCart", "SendCartReminder"]
+    },
+    {
+      "id": "human-seller",
+      "icon": "user-check",
+      "title": "Vendedor Humano",
+      "description": "Recebe o chat com contexto completo para negociar descontos ou tratar exceções.",
+      "colorTheme": "human",
+      "order": 6,
+      "tools": []
+    },
+    {
+      "id": "sales-record",
+      "icon": "book-open",
+      "title": "Registro de Interação",
+      "description": "Consolida métricas e aprendizados da jornada comercial no CRM.",
+      "colorTheme": "neutral",
+      "order": 7,
+      "tools": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "price-check",
+      "title": "Consulta de Preço",
+      "label": "Preço de produto",
+      "description": "Cliente perguntando o preço de um produto específico.",
+      "message": "Quanto custa a camiseta polo azul tamanho M?",
+      "flowType": "known"
+    },
+    {
+      "id": "stock-check",
+      "title": "Verificar Estoque",
+      "label": "Consulta de estoque",
+      "description": "Cliente verificando disponibilidade de calçado esportivo.",
+      "message": "Vocês têm o tênis Nike Air Max 90 preto número 42 em estoque?",
+      "flowType": "known"
+    },
+    {
+      "id": "full-sale",
+      "title": "Venda Completa",
+      "label": "Jornada completa de compra",
+      "description": "Cliente interessado em comprar notebook com orçamento formal.",
+      "message": "Estou procurando um notebook para trabalho, preciso de um bom custo-benefício até R$ 4.000. Podem me enviar um orçamento?",
+      "flowType": "known"
+    },
+    {
+      "id": "abandoned-cart",
+      "title": "Carrinho Abandonado",
+      "label": "Recuperação de carrinho",
+      "description": "Cliente que abandonou o carrinho retorna para consultar disponibilidade.",
+      "message": "Oi, eu tinha colocado uns produtos no carrinho semana passada mas não finalizei. Ainda tem tudo disponível?",
+      "flowType": "known"
+    },
+    {
+      "id": "negotiation",
+      "title": "Negociação",
+      "label": "Pedido de desconto por volume",
+      "description": "Cliente quer negociar preço para lote corporativo.",
+      "message": "Estou comprando 50 unidades para minha empresa, consigo um desconto especial com vendedor?",
+      "flowType": "human-handoff"
+    },
+    {
+      "id": "complaint",
+      "title": "Reclamação",
+      "label": "Produto divergente",
+      "description": "Cliente insatisfeito reportando envio de produto errado.",
+      "message": "Recebi o produto errado! Pedi a cor preta e veio azul. Quero resolver isso urgente com um atendente!",
+      "flowType": "human-handoff"
+    }
+  ],
+  "capabilities": {
+    "humanHandoff": true,
+    "knowledgeBase": true,
+    "tracing": true
+  },
+  "maf": {
+    "workflowName": "SalesAssistantWorkflow",
+    "version": "1.0",
+    "inputSchema": "sales-inquiry-v1"
+  },
+  "fixedKnowledgeBase": [
+    {
+      "id": "kb_sales_001",
+      "title": "Política de Trocas e Devoluções",
+      "category": "Pós-Venda",
+      "score": 0.95,
+      "summary": "Trocas em até 30 dias com nota fiscal. Devoluções com frete grátis para defeito de fabricação em até 7 dias corridos.",
+      "resolutionType": "exchange-policy",
+      "tags": ["troca", "devolução", "defeito", "garantia"]
+    },
+    {
+      "id": "kb_sales_002",
+      "title": "Condições de Pagamento e Parcelamento",
+      "category": "Vendas",
+      "score": 0.92,
+      "summary": "Pix: 5% de desconto imediato. Cartão de crédito: até 10x sem juros (parcela mínima de R$ 30,00). Boleto: 3% de desconto com vencimento em 3 dias úteis.",
+      "resolutionType": "payment-info",
+      "tags": ["pagamento", "pix", "cartão", "boleto", "parcelas"]
+    },
+    {
+      "id": "kb_sales_003",
+      "title": "Frete e Prazos de Entrega",
+      "category": "Logística",
+      "score": 0.90,
+      "summary": "Frete grátis para compras acima de R$ 299. Capitais: 2 a 5 dias úteis. Interior: 5 a 10 dias úteis. Retirada em loja expressa no mesmo dia útil.",
+      "resolutionType": "shipping-info",
+      "tags": ["frete", "entrega", "prazo", "retirada"]
+    }
+  ]
+}

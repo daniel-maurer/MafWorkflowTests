@@ -89,6 +89,9 @@ function reducer(state: State, action: Action): State {
       const ev = action.ev;
       switch (ev.type) {
         case 'message':
+          if (state.messages.some((m) => m.id === ev.message.id)) {
+            return state;
+          }
           return { ...state, messages: [...state.messages, ev.message] };
         case 'trace':
           return { ...state, trace: [...state.trace, ev.event] };

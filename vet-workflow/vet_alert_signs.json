@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "emergencySigns": [
+    {
+      "id": "convulsao",
+      "keywords": ["convulsão", "convulsões", "convulsionando", "tremendo muito", "ataque epilético", "espamos"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Mantenha o animal em local seguro, sem objetos ao redor. NÃO coloque nada na boca. Vá à clínica veterinária mais próxima IMEDIATAMENTE."
+    },
+    {
+      "id": "dispneia",
+      "keywords": ["não consegue respirar", "respiração difícil", "ofegante", "cianose", "boca roxa", "língua roxa", "falta de ar", "engasgado", "sufocando"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Dificuldade respiratória requer atendimento IMEDIATO. Mantenha o animal calmo e leve à emergência veterinária AGORA."
+    },
+    {
+      "id": "sangramento",
+      "keywords": ["sangramento", "sangrando muito", "hemorragia", "sangue ativo", "corte profundo", "esguichando"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Aplique pressão com pano limpo no local. NÃO tente fazer torniquete. Dirija-se à emergência veterinária IMEDIATAMENTE."
+    },
+    {
+      "id": "intoxicacao",
+      "keywords": ["envenenado", "veneno", "comeu veneno", "intoxicação", "comeu chocolate", "comeu remédio", "chumbinho", "comeu planta", "tóxico"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Possível intoxicação. NÃO provoque vômito sem orientação médica. Leve o animal E a embalagem do produto à emergência veterinária AGORA."
+    },
+    {
+      "id": "trauma",
+      "keywords": ["atropelado", "caiu da janela", "caiu da sacada", "atropelamento", "fratura", "osso exposto", "trauma grave", "mordido por cão grande"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Evite movimentar desnecessariamente o animal. Se possível, transporte em superfície plana e rígida. Vá à emergência veterinária IMEDIATAMENTE."
+    },
+    {
+      "id": "parada_alimentar_gatos",
+      "keywords": ["gato não come", "gata não come", "não come há mais de 24h", "não come há dois dias", "sem comer 24h", "sem comer 48h"],
+      "severity": "HIGH",
+      "message": "⚠️ ATENÇÃO: Felinos que param de comer por mais de 24 horas correm risco de lipidose hepática severa. Procure atendimento veterinário hoje mesmo."
+    },
+    {
+      "id": "colapso",
+      "keywords": ["desmaiou", "desacordado", "caiu e não levanta", "sem consciência", "inconsciente", "colapso"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Verifique respiração. Mantenha o animal aquecido e posicionado de lado. Procure pronto-socorro veterinário IMEDIATAMENTE."
+    },
+    {
+      "id": "vomito_sangue",
+      "keywords": ["vômito com sangue", "vomitando sangue", "vomitou sangue", "sangue nas fezes", "fezes pretas", "melena"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Vômito ou fezes com sangue indicam quadro potencialmente grave. Procure atendimento veterinário emergencial AGORA."
+    },
+    {
+      "id": "distensao_abdominal",
+      "keywords": ["barriga inchada", "abdômen distendido", "barriga dura", "tentando vomitar sem conseguir", "torção gástrica"],
+      "severity": "CRITICAL",
+      "message": "⚠️ EMERGÊNCIA: Distensão abdominal aguda pode ser torção de estômago, risco de vida em poucas horas. Leve à emergência veterinária IMEDIATAMENTE."
+    }
+  ]
+}

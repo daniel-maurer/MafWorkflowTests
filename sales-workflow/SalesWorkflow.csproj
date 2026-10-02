@@ -5,7 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <UserSecretsId>deae8210-1b60-4259-9849-21714065b15a</UserSecretsId>
+    <RootNamespace>SalesWorkflow</RootNamespace>
+    <AssemblyName>SalesWorkflow</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,10 +27,7 @@
     <Content Include=".env">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="know_issues.json">
+    <Content Include="product_catalog.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

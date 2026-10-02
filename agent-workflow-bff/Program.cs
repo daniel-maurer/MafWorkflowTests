@@ -212,6 +212,97 @@ api.MapGet("/scenarios", async (string workflowId, IWorkflowConfigStore configs,
         : Results.Ok(workflow.Scenarios);
 });
 
+// ===== Simulation Endpoints for Sales Workflow =====
+
+api.MapGet("/products/{sku}/image", (string sku) =>
+{
+    var placeholder = $"https://placehold.co/400x400/2563eb/white?text={Uri.EscapeDataString(sku)}";
+    return Results.Redirect(placeholder);
+}).WithTags("Sales Simulation");
+
+api.MapGet("/products/{sku}/price", (string sku) =>
+{
+    return Results.Ok(new
+    {
+        sku,
+        price = 129.90m,
+        originalPrice = 159.90m,
+        discount = 18.8m,
+        currency = "BRL",
+        installments = new { count = 10, value = 12.99m, interestFree = true },
+        pixDiscount = 5m,
+        pixPrice = 123.40m,
+        validUntil = DateTimeOffset.UtcNow.AddDays(7)
+    });
+}).WithTags("Sales Simulation");
+
+api.MapGet("/products/{sku}/stock", (string sku) =>
+{
+    return Results.Ok(new
+    {
+        sku,
+        inStock = true,
+        quantity = 45,
+        warehouse = "CD-SP-01",
+        estimatedDelivery = "2 a 5 dias úteis",
+        storePickup = true
+    });
+}).WithTags("Sales Simulation");
+
+api.MapGet("/products/search", (string? q, string? color, string? size, string? brand, decimal? minPrice, decimal? maxPrice) =>
+{
+    return Results.Ok(new
+    {
+        query = q,
+        filters = new { color, size, brand, minPrice, maxPrice },
+        total = 3,
+        products = new[]
+        {
+            new { sku = "CAM-POLO-AZ-M", name = "Camiseta Polo Clássica", price = 129.90m, inStock = true, imageUrl = "/api/products/CAM-POLO-AZ-M/image" },
+            new { sku = "NIKE-AM90-PT-42", name = "Nike Air Max 90", price = 899.90m, inStock = true, imageUrl = "/api/products/NIKE-AM90-PT-42/image" },
+            new { sku = "NB-LENOVO-I5-16", name = "Notebook Lenovo IdeaPad 3i", price = 3499.00m, inStock = true, imageUrl = "/api/products/NB-LENOVO-I5-16/image" }
+        }
+    });
+}).WithTags("Sales Simulation");
+
+api.MapPost("/quotes", () =>
+{
+    var quoteId = $"QT-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}";
+    return Results.Ok(new
+    {
+        quoteId,
+        items = new[]
+        {
+            new { sku = "NB-LENOVO-I5-16", name = "Notebook Lenovo IdeaPad 3i", quantity = 1, unitPrice = 3499.00m, total = 3499.00m },
+            new { sku = "MOUS-LOG-WL", name = "Mouse Logitech M280 Wireless", quantity = 1, unitPrice = 79.90m, total = 79.90m }
+        },
+        subtotal = 3578.90m,
+        discount = 178.95m,
+        total = 3399.95m,
+        currency = "BRL",
+        validUntil = DateTimeOffset.UtcNow.AddDays(7),
+        paymentConditions = "Pix: R$ 3.229,95 (5% desc.) ou até 10x sem juros no cartão."
+    });
+}).WithTags("Sales Simulation");
+
+api.MapGet("/carts/abandoned/{customerId}", (string customerId) =>
+{
+    return Results.Ok(new
+    {
+        customerId,
+        cartId = "CART-8821",
+        abandonedAt = DateTimeOffset.UtcNow.AddDays(-3),
+        items = new[]
+        {
+            new { sku = "NIKE-AM90-PT-42", name = "Nike Air Max 90", quantity = 1, price = 899.90m },
+            new { sku = "FONE-JBL-T510", name = "Fone JBL Tune 510BT", quantity = 1, price = 199.90m }
+        },
+        total = 1099.80m,
+        itemsStillAvailable = true
+    });
+}).WithTags("Sales Simulation");
+
+
 app.MapHub<FrontendWorkflowHub>("/hubs/workflow").RequireAuthorization();
 app.MapHub<MafBridgeHub>("/hubs/maf").RequireAuthorization();
 

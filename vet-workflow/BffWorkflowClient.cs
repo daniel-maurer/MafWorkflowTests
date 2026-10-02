@@ -1,46 +1,53 @@
 using System.Collections.Concurrent;
-using System.Threading.Channels;
-using System.Linq;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.AI;
 
-namespace SupportWorkflow;
+namespace VetWorkflow;
 
 internal sealed class BffWorkflowClient : IAsyncDisposable
 {
     private readonly WorkflowConfiguration _configuration;
     private readonly IChatClient _chatClient;
+    private readonly Func<IUserInteractor, Workflow> _workflowFactory;
     private readonly HubConnection _connection;
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
-    private readonly Func<IUserInteractor, Workflow> _workflowFactory;
 
-
-    public BffWorkflowClient(WorkflowConfiguration configuration, IChatClient chatClient, Func<IUserInteractor, Workflow> workflowFactory)
+    public BffWorkflowClient(
+        WorkflowConfiguration configuration,
+        IChatClient chatClient,
+        Func<IUserInteractor, Workflow> workflowFactory)
     {
-        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _chatClient = chatClient ?? throw new ArgumentNullException(nameof(chatClient));
-        _workflowFactory = workflowFactory ?? throw new ArgumentNullException(nameof(workflowFactory));
+        _configuration = configuration;
+        _chatClient = chatClient;
+        _workflowFactory = workflowFactory;
+
         _connection = new HubConnectionBuilder()
-            .WithUrl(configuration.BffBaseUrl, options =>
+            .WithUrl(_configuration.BffBaseUrl, options =>
             {
-                options.AccessTokenProvider = () => Task.FromResult("mock-token:maf-worker")!;
+                options.Headers.Add("Authorization", "Bearer mock-token:maf-vet-worker");
             })
             .WithAutomaticReconnect()
             .Build();
 
-        ConfigureHandlers();
+        RegisterHubHandlers();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         await _connection.StartAsync(cancellationToken);
-        await _connection.InvokeAsync("RegisterWorker", _configuration.WorkerId, new[] { "support", "incident-triage" }, cancellationToken);
-        await PublishTraceAsync(string.Empty, "MAF worker connected to BFF.");
+        await _connection.InvokeAsync(
+            "RegisterWorker",
+            _configuration.WorkerId,
+            new[] { "vet-assistant" },
+            cancellationToken);
+
+        await PublishTraceAsync(string.Empty, "MAF Vet Worker connected to BFF.");
     }
 
-    private void ConfigureHandlers()
+    private void RegisterHubHandlers()
     {
         _connection.On<MafStartWorkflowCommand>("startWorkflow", async command =>
         {
@@ -117,6 +124,11 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private async Task HandleStartWorkflowAsync(MafStartWorkflowCommand command)
     {
+        if (!string.IsNullOrEmpty(command.WorkflowId) && command.WorkflowId != "vet-assistant")
+        {
+            return;
+        }
+
         var session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id));
         await session.StartAsync(command.InitialMessage ?? string.Empty);
 
@@ -125,14 +137,14 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await PublishMessageAsync(command.SessionId, CreateUserMessage(command.InitialMessage));
         }
 
-        await PublishTraceAsync(command.SessionId, "Workflow started.");
-        await PublishAgentStateAsync(command.SessionId, "triage", "active", "Running");
+        await PublishTraceAsync(command.SessionId, "VetAssistant workflow started.");
+        await PublishAgentStateAsync(command.SessionId, "vet-triage", "active", "Running");
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
             Status = "triaging",
-            ChatTitle = "MAF workflow started",
-            ChatSubtitle = "Waiting for input and triage processing.",
-            ActiveAgentId = "triage",
+            ChatTitle = "Atendimento Veterinário Iniciado",
+            ChatSubtitle = "Analisando solicitação inicial do tutor...",
+            ActiveAgentId = "vet-triage",
             HumanMode = false
         });
     }
@@ -141,12 +153,12 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         if (!_sessions.TryGetValue(command.SessionId, out var session))
         {
-            // Esta sessão pertence a outro workflow/worker em execução
+            // Sessão pertence a outro worker
             return;
         }
 
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
-        await PublishTraceAsync(command.SessionId, "User message received.");
+        await PublishTraceAsync(command.SessionId, "Mensagem do tutor recebida.");
         await session.EnqueueMessageAsync(command.Text);
     }
 
@@ -164,7 +176,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Type = "message",
             Side = "left",
             SenderType = "human",
-            AgentId = "human-support",
+            AgentId = "vet-handoff",
             SystemStyle = null,
             Text = command.Text,
             Tools = Array.Empty<object>(),
@@ -173,7 +185,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             Audience = MessageAudience.Both,
         });
         await session.EnqueueMessageAsync(command.Text);
-        await PublishTraceAsync(command.SessionId, "Human message received and routed to session.");
+        await PublishTraceAsync(command.SessionId, "Mensagem do veterinário encaminhada.");
     }
 
     private async Task HandleRunScenarioAsync(MafRunScenarioCommand command)
@@ -184,31 +196,25 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        await PublishTraceAsync(command.SessionId, $"Scenario '{command.ScenarioId}' requested.");
+        await PublishTraceAsync(command.SessionId, $"Cenário '{command.ScenarioId}' solicitado.");
         await session.EnqueueMessageAsync(command.ScenarioId);
     }
 
     private async Task HandleMarkSolvedAsync(MafSessionCommand command)
     {
-        // The frontend "Mark as Solved" button signals the running workflow that the
-        // human-support exchange is resolved. We enqueue a control token instead of
-        // tearing down the session, so the workflow finishes its remaining stages
-        // (Pattern Record + Done context) cleanly.
         if (_sessions.TryGetValue(command.SessionId, out var session))
         {
             await session.EnqueueMessageAsync(WorkflowControlTokens.MarkResolved);
-            await PublishTraceAsync(command.SessionId, "User marked the issue as resolved.", "success");
+            await PublishTraceAsync(command.SessionId, "Atendimento marcado como resolvido.", "success");
         }
         else
         {
-            // No live session — fall back to the previous behaviour so the UI still flips
-            // to a resolved state when the workflow has already completed.
             await PublishPublicEventAsync(command.SessionId, "splitMode", false);
             await PublishContextAsync(command.SessionId, new MafContextPayload
             {
                 Status = "resolved",
-                ChatTitle = "Resolved",
-                ChatSubtitle = "The session was marked solved.",
+                ChatTitle = "Atendimento Concluído",
+                ChatSubtitle = "A sessão foi finalizada.",
                 ActiveAgentId = string.Empty,
                 HumanMode = false
             });
@@ -225,8 +231,8 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
             Status = "idle",
-            ChatTitle = "Workflow reset",
-            ChatSubtitle = "The session has been reset.",
+            ChatTitle = "Workflow reiniciado",
+            ChatSubtitle = "A sessão foi limpa.",
             ActiveAgentId = string.Empty,
             HumanMode = false
         });
@@ -252,12 +258,13 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         await PublishPublicEventAsync(sessionId, "agent", payload);
     }
+
     private async Task PublishKbAsync(string sessionId, IEnumerable<MafKbPayload> payload)
     {
         await PublishPublicEventAsync(sessionId, "kb", payload);
     }
 
-    private async Task PublishTypingAsync(string sessionId, bool on, string label = "MAF Agent typing", string container = "msgs")
+    private async Task PublishTypingAsync(string sessionId, bool on, string label = "VetAssistant digitando...", string container = "msgs")
     {
         await PublishPublicEventAsync(sessionId, "typing", new MafTypingPayload
         {
@@ -298,7 +305,6 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     }
 
     private static string GenerateId(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
-
 
     private MafMessagePayload CreateUserMessage(string text)
     {
@@ -358,7 +364,8 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private WorkflowSession CreateSession(string sessionId)
     {
         var interactor = new SessionWorkflowInteractor(sessionId, this);
-        return new WorkflowSession(sessionId, _workflowFactory(interactor), this, interactor);
+        var workflow = _workflowFactory(interactor);
+        return new WorkflowSession(sessionId, workflow, this, interactor);
     }
 
     private sealed class WorkflowSession : IAsyncDisposable
@@ -441,7 +448,6 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             _sessionId = sessionId;
             _parent = parent;
         }
-
 
         public async Task SendUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
         {
@@ -546,70 +552,14 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private async Task PublishWorkflowOutputAsync(string sessionId, object? outputData)
     {
-        if (outputData is TriageResult triageResult)
+        if (outputData is VetWorkflowContext or ClinicalSummary)
         {
-            // Triage outputs are internal agent-facing classifications — route them only to the
-            // attendant pane (see TriageExecutor for the rationale).
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                string.IsNullOrWhiteSpace(triageResult.Summary) ? "Issue classified." : triageResult.Summary,
-                "triage", null, MessageAudience.Attendant));
+            // Os executores do VetAssistant já despacharam os eventos e mensagens formatados individualmente.
             return;
         }
 
-        if (outputData is FrequentProblemResult frequentProblemResult)
+        if (outputData is string text && !string.IsNullOrWhiteSpace(text))
         {
-            // The Freq. Problem Agent's verdict ("Problema reconhecido" / "Encaminhando para
-            // suporte humano") is operational telemetry rather than a customer-facing reply.
-            // Keep it on the attendant side; the customer reads the Resolution / Human-Support
-            // message that follows.
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                frequentProblemResult.MessageForUser ?? "Analyzing issue against known problems.",
-                "freq", null, MessageAudience.Attendant));
-
-            if (frequentProblemResult.MatchedIssue != null)
-            {
-                var kbEntry = new MafKbPayload
-                {
-                    Id = GenerateId("kb"),
-                    Title = frequentProblemResult.MatchedIssue.Problem,
-                    Category = string.Empty,
-                    Score = frequentProblemResult.MatchedIssue.SuccessRate,
-                    Summary = frequentProblemResult.MatchedIssue.Symptoms.FirstOrDefault() ?? frequentProblemResult.MatchedIssue.Solution ?? string.Empty,
-                    ResolutionType = frequentProblemResult.MatchedIssue.McpAction ?? "knowledge-base",
-                    Tags = frequentProblemResult.MatchedIssue.Keywords.ToArray()
-                };
-                await PublishKbAsync(sessionId, new[] { kbEntry });
-            }
-            return;
-        }
-
-        if (outputData is ResolutionResult resolutionResult)
-        {
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                resolutionResult.MessageForUser ?? "Resolution completed.",
-                "res",
-                (resolutionResult.ActionsExecuted ?? new List<string>())
-                    .Where(action => !string.IsNullOrWhiteSpace(action))
-                    .Select(action => new AgentToolCall { Name = action, Args = string.Empty, Ok = resolutionResult.IsResolved })
-                    .ToList()));
-            return;
-        }
-
-        if (outputData is PatternRecord patternRecordResult)
-        {
-            // Pattern descriptions are internal analytics, not customer-facing replies.
-            await PublishMessageAsync(sessionId, CreateAgentMessage(
-                patternRecordResult.PatternDescription ?? "Pattern recorded.",
-                "pattern", null, MessageAudience.Attendant));
-            return;
-        }
-
-        if (outputData is string text)
-        {
-            // Strings yielded by ResolutionExecutor / TriageExecutor are intermediate progress
-            // text. The dedicated typed-output branches above already publish the canonical
-            // agent message, so the string path is intentionally a no-op to avoid duplicated
-            // "MAF Agent" rows in the chat.
             return;
         }
 

@@ -38,9 +38,9 @@
   {
     "id": "new-pattern-001",
     "pattern_description": "O cliente não recebeu o auxílio para creche deste mês.",
-    "frequency": 4,
+    "frequency": 5,
     "first_detected": "2026-05-22T10:41:55.3251234Z",
-    "last_detected": "2026-05-22T11:15:36.1868992Z",
+    "last_detected": "2026-10-02T00:20:10.3534884Z",
     "example_symptoms": [
       "Cliente alega não ter recebido o auxílio para creche.",
       "Apoio mensal da creche não foi creditado na conta do cliente.",
@@ -48,7 +48,8 @@
     ],
     "example_solutions": [
       "Será pago dia 24/05.",
-      "O pagamento do auxílio para creche será realizado na próxima data programada."
+      "O pagamento do auxílio para creche será realizado na próxima data programada.",
+      "Será pago no dia 10."
     ],
     "promoted_to_known_issue": true,
     "linked_known_issue": "O cliente não recebeu o auxílio para creche deste mês."

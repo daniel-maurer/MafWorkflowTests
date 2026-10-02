@@ -1,0 +1,181 @@
+{
+  "id": "vet-assistant",
+  "title": "VetAssistant",
+  "subtitle": "Assistente Administrativo Veterinário com Triagem Inteligente",
+  "description": "Triagem de urgência, coleta de dados do paciente, agendamento de consultas e vacinas, orientações pós-atendimento e escalonamento para veterinário.",
+  "icon": "siren",
+  "colorTheme": "success",
+  "agents": [
+    {
+      "id": "vet-triage",
+      "icon": "git-branch",
+      "title": "Triagem de Urgência",
+      "description": "Classifica a mensagem por urgência (Emergência / Urgente / Rotina) e tema.",
+      "colorTheme": "error",
+      "order": 1,
+      "tools": ["ClassifyUrgency", "DetectAlertSigns"]
+    },
+    {
+      "id": "emergency-escalation",
+      "icon": "siren",
+      "title": "Escalonamento de Emergência",
+      "description": "Envia alerta ao veterinário e mensagem de segurança ao tutor em casos críticos.",
+      "colorTheme": "error",
+      "order": 2,
+      "tools": ["NotifyVet", "SendEmergencyMessage"]
+    },
+    {
+      "id": "data-collector",
+      "icon": "file-search",
+      "title": "Coleta de Dados",
+      "description": "Coleta espécie, raça, idade, peso, sintomas, medicação e fotos do paciente.",
+      "colorTheme": "primary",
+      "order": 3,
+      "tools": ["RequestMissingData", "ValidatePatientData"]
+    },
+    {
+      "id": "patient-file",
+      "icon": "database",
+      "title": "Ficha do Paciente",
+      "description": "Cria ou atualiza a ficha do animal com histórico completo.",
+      "colorTheme": "primary",
+      "order": 4,
+      "tools": ["CreateOrUpdatePatientFile", "SearchPatientHistory"]
+    },
+    {
+      "id": "scheduling",
+      "icon": "tag",
+      "title": "Agendamento",
+      "description": "Agenda consultas, retornos, vacinas, exames e vermifugação.",
+      "colorTheme": "success",
+      "order": 5,
+      "tools": ["CheckAvailability", "BookAppointment", "SetReminder"]
+    },
+    {
+      "id": "post-care",
+      "icon": "book-open",
+      "title": "Orientações Pós-Consulta",
+      "description": "Envia orientações administrativas aprovadas pelo veterinário.",
+      "colorTheme": "success",
+      "order": 6,
+      "tools": ["GetApprovedInstructions", "SendPostCareMessage"]
+    },
+    {
+      "id": "vet-handoff",
+      "icon": "user-check",
+      "title": "Encaminhamento ao Veterinário",
+      "description": "Transfere a conversa para o veterinário com contexto completo.",
+      "colorTheme": "human",
+      "order": 7,
+      "tools": ["PrepareHandoffSummary", "ActivateHumanMode"]
+    },
+    {
+      "id": "follow-up",
+      "icon": "pen-line",
+      "title": "Follow-Up",
+      "description": "Programa lembretes de evolução, exames e retornos.",
+      "colorTheme": "warning",
+      "order": 8,
+      "tools": ["ScheduleFollowUp", "SendFollowUpReminder"]
+    },
+    {
+      "id": "summary",
+      "icon": "terminal",
+      "title": "Resumo Clínico",
+      "description": "Gera resumo estruturado da interação para revisão do veterinário.",
+      "colorTheme": "neutral",
+      "order": 9,
+      "tools": ["GenerateClinicalSummary", "UpdatePendingDashboard"]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "emergencia-convulsao",
+      "title": "Emergência",
+      "label": "Convulsão",
+      "description": "Tutor relata que o animal está tendo convulsões.",
+      "message": "Meu cachorro está tendo convulsões agora, não para de tremer e babando muito! O que eu faço?",
+      "flowType": "human-handoff"
+    },
+    {
+      "id": "agendar-vacina",
+      "title": "Agendamento",
+      "label": "Vacina anual",
+      "description": "Tutor quer agendar vacina de reforço anual.",
+      "message": "Oi, preciso agendar a vacina anual da Luna, ela é uma golden de 3 anos e pesa 28kg. Tem horário essa semana?",
+      "flowType": "known"
+    },
+    {
+      "id": "retorno-pos-castracao",
+      "title": "Pós-Consulta",
+      "label": "Retorno castração",
+      "description": "Tutor pede orientações após castração realizada.",
+      "message": "O Thor foi castrado ontem e queria saber os cuidados que preciso ter com os pontos e quando retorno.",
+      "flowType": "known"
+    },
+    {
+      "id": "sintoma-vomito",
+      "title": "Sintoma",
+      "label": "Vômito persistente",
+      "description": "Tutor relata vômitos repetidos no animal.",
+      "message": "Minha gata Mimi de 4 anos está vomitando desde ontem, já foram 4 vezes. Ela comeu ração normal mas está apática e não come.",
+      "flowType": "human-handoff"
+    },
+    {
+      "id": "resultado-exame",
+      "title": "Exame",
+      "label": "Envio de resultado",
+      "description": "Tutor envia resultado de exame para avaliação médica.",
+      "message": "Doutor, saiu o resultado do hemograma do Bob que o senhor pediu no retorno. Como devo proceder?",
+      "flowType": "human-handoff"
+    }
+  ],
+  "capabilities": {
+    "humanHandoff": true,
+    "knowledgeBase": true,
+    "tracing": true
+  },
+  "maf": {
+    "workflowName": "VetAssistantWorkflow",
+    "version": "1.0",
+    "inputSchema": "vet-ticket-v1"
+  },
+  "fixedKnowledgeBase": [
+    {
+      "id": "kb_vet_001",
+      "title": "Sinais de Alerta — Protocolo de Emergência Imediata",
+      "category": "Emergência",
+      "score": 0.99,
+      "summary": "Convulsão, dispneia/falta de ar, sangramento ativo abundante, intoxicação/veneno, trauma grave/atropelamento, parada alimentar >24h em gatos, colapso/desmaio, vômito com sangue e distensão abdominal aguda exigem atendimento presencial de emergência imediato.",
+      "resolutionType": "emergency-escalation",
+      "tags": ["emergência", "alerta", "convulsão", "sangramento", "intoxicação", "trauma"]
+    },
+    {
+      "id": "kb_vet_002",
+      "title": "Calendário Vacinal Preventivo Cães e Gatos",
+      "category": "Vacinação",
+      "score": 0.95,
+      "summary": "Cães: Polivalente (V8/V10) a partir de 6 a 8 semanas (3 a 4 doses com intervalo de 21 a 28 dias) + Antirrábica a partir de 4 meses + Gripe e Giardia conforme rotina. Reforço anual de todas. Gatos: Quádrupla ou Quíntupla Felina (V4/V5) + Antirrábica com reforço anual.",
+      "resolutionType": "scheduling-info",
+      "tags": ["vacina", "v8", "v10", "v4", "v5", "antirrábica", "filhote", "reforço"]
+    },
+    {
+      "id": "kb_vet_003",
+      "title": "Protocolo Pós-Cirúrgico Padrão — Castração",
+      "category": "Pós-Operatório",
+      "score": 0.93,
+      "summary": "Repouso 7-10 dias, colar elizabetano obrigatório para não lamber pontos, assepsia com soro 2x ao dia, remoção de pontos em 10-14 dias na clínica, analgesia prescrita pelo veterinário.",
+      "resolutionType": "post-care-info",
+      "tags": ["castração", "pós-operatório", "pontos", "repouso", "colar"]
+    },
+    {
+      "id": "kb_vet_004",
+      "title": "Controle Parasitário e Vermifugação",
+      "category": "Prevenção",
+      "score": 0.90,
+      "summary": "Filhotes: a cada 15 dias até desmame, depois mensal até 6 meses. Adultos: a cada 3 a 6 meses conforme estilo de vida. Pesar o animal antes da administração para dosagem exata.",
+      "resolutionType": "scheduling-info",
+      "tags": ["vermifugação", "vermes", "prevenção", "filhote"]
+    }
+  ]
+}
