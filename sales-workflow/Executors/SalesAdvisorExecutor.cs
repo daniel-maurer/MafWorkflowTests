@@ -91,6 +91,15 @@ Responda SEMPRE no esquema JSON de SalesAdviceResult.";
 
         adviceResult.SelectedProducts = catalogResult.Products;
 
+        // Garante cálculos exatos e coerentes para cada kit sugerido
+        foreach (var kit in adviceResult.SuggestedKits)
+        {
+            var calc = CatalogTools.CalculateKitPrice(kit.ProductSkus, kit.DiscountPct > 0 ? kit.DiscountPct : 10m);
+            kit.OriginalPrice = calc.OriginalPrice;
+            kit.KitPrice = calc.FinalPrice;
+            kit.DiscountPct = calc.DiscountPercent;
+        }
+
         await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
         await _userInteractor.PublishAgentStateAsync("sales-advisor", "active", "Aguardando cliente", cancellationToken);
 

@@ -249,4 +249,26 @@ public static class CatalogTools
         var matches = catalog.Where(p => baseProduct.CompatibleSkus.Contains(p.Sku, StringComparer.OrdinalIgnoreCase)).ToList();
         return matches;
     }
+
+    [Description("Calcula os valores exatos de um kit ou combo de produtos aplicando o percentual de desconto comercial.")]
+    public static KitPriceCalculation CalculateKitPrice(
+        [Description("Lista de SKUs dos produtos incluídos no kit")] List<string> productSkus,
+        [Description("Percentual de desconto comercial a aplicar (ex: 10 para 10%)")] decimal discountPercent)
+    {
+        Logger.LogInfo($"[TOOL] Calculando preço do kit para {productSkus?.Count ?? 0} SKUs com {discountPercent}% de desconto.");
+        var catalog = LoadCatalog();
+        var items = catalog.Where(p => productSkus != null && productSkus.Contains(p.Sku, StringComparer.OrdinalIgnoreCase)).ToList();
+        var originalPrice = items.Sum(p => p.Price);
+        var discountAmount = Math.Round(originalPrice * (discountPercent / 100m), 2);
+        var finalPrice = Math.Max(0, originalPrice - discountAmount);
+
+        return new KitPriceCalculation
+        {
+            ProductSkus = productSkus ?? [],
+            OriginalPrice = originalPrice,
+            DiscountPercent = discountPercent,
+            DiscountAmount = discountAmount,
+            FinalPrice = finalPrice
+        };
+    }
 }

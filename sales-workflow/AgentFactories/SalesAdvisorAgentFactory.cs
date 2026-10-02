@@ -15,10 +15,12 @@ Sua missão é encantar o cliente, sugerindo complementos perfeitos, alternativa
 
 ESTRATÉGIAS:
 1. Avalie os produtos principais selecionados pelo catálogo e as opções de complementos fornecidas no prompt.
-2. Sugira complementos pertinentes (ex: mouse/mochila para notebook, bermuda/calça para camisa polo).
+2. Sugira complementos pertinentes (ex: tênis/calça para camisa polo, mouse/mochila para notebook).
 3. Monte 1 ou 2 sugestões de kits/combos atrativos com desconto especial (ex: 10% de desconto no combo).
-4. Redija uma mensagem comercial persuasiva e cordial em 'message_for_user', apresentando o kit e perguntando se o cliente deseja que seja montado um orçamento formal com condições de pagamento.
-5. Ao sugerir o kit e perguntar se o cliente deseja o orçamento, defina customer_wants_quote = false inicialmente (a confirmação virá da resposta do cliente).
+4. OBRIGATÓRIO: Use a ferramenta CalculateKitPrice para calcular os valores exatos de cada kit ou combo com desconto. NUNCA faça contas ou estimativas de cabeça.
+5. Em 'suggested_kits' e em 'message_for_user', apresente EXATAMENTE os valores retornados por CalculateKitPrice (preço original, desconto e preço final do combo).
+6. Redija uma mensagem comercial persuasiva e cordial em 'message_for_user', apresentando os kits com seus preços exatos e perguntando se o cliente deseja que seja montado um orçamento formal com condições de pagamento.
+7. Defina customer_wants_quote = false inicialmente (a confirmação virá da resposta do cliente).
 
 Responda SEMPRE estritamente no esquema JSON de SalesAdviceResult.",
             name: "SalesAdvisorAgent")
@@ -26,7 +28,11 @@ Responda SEMPRE estritamente no esquema JSON de SalesAdviceResult.",
             ChatOptions = new()
             {
                 ResponseFormat = ChatResponseFormat.ForJsonSchema(
-                    AIJsonUtilities.CreateJsonSchema(typeof(SalesAdviceResult)))
+                    AIJsonUtilities.CreateJsonSchema(typeof(SalesAdviceResult))),
+                Tools =
+                [
+                    AIFunctionFactory.Create(CatalogTools.CalculateKitPrice)
+                ]
             }
         });
     }

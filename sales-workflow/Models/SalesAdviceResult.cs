@@ -70,3 +70,21 @@ public sealed class KitSuggestion
     [JsonPropertyName("discount_pct")]
     public decimal DiscountPct { get; set; }
 }
+
+public sealed class KitPriceCalculation
+{
+    [JsonPropertyName("product_skus")]
+    public List<string> ProductSkus { get; set; } = [];
+
+    [JsonPropertyName("original_price")]
+    public decimal OriginalPrice { get; set; }
+
+    [JsonPropertyName("discount_percent")]
+    public decimal DiscountPercent { get; set; }
+
+    [JsonPropertyName("discount_amount")]
+    public decimal DiscountAmount { get; set; }
+
+    [JsonPropertyName("final_price")]
+    public decimal FinalPrice { get; set; }
+}
