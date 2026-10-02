@@ -61,6 +61,8 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
   const { getAccessToken } = useAuth();
   const session = useWorkflowSession(workflow, getAccessToken);
   const [tab, setTab] = useState<'context' | 'trace' | 'kb'>('context');
+  const [pipelineOpen, setPipelineOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const [mobilePipelineOpen, setMobilePipelineOpen] = useState(false);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const navigate = useNavigate();
@@ -68,7 +70,11 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
 
   // Auto-flip to KB tab whenever the KB updates with results.
   useEffect(() => {
-    if (snapshot.kb.length > 0) setTab('kb');
+    if (snapshot.kb.length > 0) {
+      setTab('kb');
+      // If details was collapsed on desktop, open it to show findings
+      setDetailsOpen(true);
+    }
   }, [snapshot.kb.length]);
 
   const pipelineState = useMemo(() => {
@@ -78,6 +84,28 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
       state: byId.get(a.id) ?? 'idle',
     }));
   }, [snapshot.agents, workflow.agents]);
+
+  function closePipeline() {
+    setMobilePipelineOpen(false);
+    setPipelineOpen(false);
+  }
+
+  function closeDetails() {
+    setMobileDetailsOpen(false);
+    setDetailsOpen(false);
+  }
+
+  function openPipeline() {
+    setPipelineOpen(true);
+    setMobileDetailsOpen(false);
+    setMobilePipelineOpen(true);
+  }
+
+  function openDetails() {
+    setDetailsOpen(true);
+    setMobilePipelineOpen(false);
+    setMobileDetailsOpen(true);
+  }
 
   function closeMobileDrawers() {
     setMobilePipelineOpen(false);
@@ -129,32 +157,28 @@ function RunBody({ workflow }: { workflow: WorkflowDefinition }) {
         </div>
       )}
       <div
-        className={`wf-main ${mobilePipelineOpen ? 'mobile-pipeline-open' : ''} ${
-          mobileDetailsOpen ? 'mobile-details-open' : ''
-        }`}
+        className={`wf-main ${!pipelineOpen ? 'pipeline-closed' : ''} ${!detailsOpen ? 'details-closed' : ''} ${
+          mobilePipelineOpen ? 'mobile-pipeline-open' : ''
+        } ${mobileDetailsOpen ? 'mobile-details-open' : ''}`}
       >
         <AgentPipeline
           workflow={workflow}
           state={pipelineState}
           activeTools={collectActiveTools(snapshot.agents)}
-          onClose={() => setMobilePipelineOpen(false)}
+          onClose={closePipeline}
         />
         <ChatPanel
           session={session}
-          onOpenPipeline={() => {
-            setMobileDetailsOpen(false);
-            setMobilePipelineOpen(true);
-          }}
-          onOpenDetails={() => {
-            setMobilePipelineOpen(false);
-            setMobileDetailsOpen(true);
-          }}
+          pipelineOpen={pipelineOpen}
+          detailsOpen={detailsOpen}
+          onOpenPipeline={openPipeline}
+          onOpenDetails={openDetails}
         />
         <ContextPanel
           session={session}
           tab={tab}
           onTabChange={setTab}
-          onClose={() => setMobileDetailsOpen(false)}
+          onClose={closeDetails}
         />
         {(mobilePipelineOpen || mobileDetailsOpen) && (
           <div

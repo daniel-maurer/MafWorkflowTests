@@ -3,9 +3,12 @@ import { Icon } from '@/components/Icon';
 import type { Message, MessageAudience, MessageImage } from '@/types/workflow';
 import type { WorkflowSessionApi } from '@/hooks/useWorkflowSession';
 import { env } from '@/config/env';
+import { formatMarkdown } from '@/utils/markdown';
 
 interface Props {
   session: WorkflowSessionApi;
+  pipelineOpen?: boolean;
+  detailsOpen?: boolean;
   onOpenPipeline?: () => void;
   onOpenDetails?: () => void;
 }
@@ -37,7 +40,13 @@ function avClass(message: Message): string {
   return AV_BY_SENDER[message.senderName] ?? 'triage';
 }
 
-export function ChatPanel({ session, onOpenPipeline, onOpenDetails }: Props) {
+export function ChatPanel({
+  session,
+  pipelineOpen = true,
+  detailsOpen = true,
+  onOpenPipeline,
+  onOpenDetails,
+}: Props) {
   const { snapshot, sendUserMessage, sendHumanMessage, runScenario, markSolved, ready, workflow } = session;
   const [input, setInput] = useState('');
   const [userInput, setUserInput] = useState('');
@@ -140,7 +149,7 @@ export function ChatPanel({ session, onOpenPipeline, onOpenDetails }: Props) {
         {onOpenPipeline && (
           <button
             type="button"
-            className="wf-mobile-top-btn"
+            className={`wf-mobile-top-btn ${!pipelineOpen ? 'panel-closed' : ''}`}
             onClick={onOpenPipeline}
             aria-label="Open agents pipeline"
             title="Agent Pipeline"
@@ -166,7 +175,7 @@ export function ChatPanel({ session, onOpenPipeline, onOpenDetails }: Props) {
         {onOpenDetails && (
           <button
             type="button"
-            className="wf-mobile-top-btn"
+            className={`wf-mobile-top-btn ${!detailsOpen ? 'panel-closed' : ''}`}
             onClick={onOpenDetails}
             aria-label="Open details and KB"
             title="Details & Knowledge Base"
@@ -422,6 +431,8 @@ function ProductImageGallery({ images }: { images: MessageImage[] }) {
 }
 
 function MessageRow({ message }: { message: Message }) {
+  const formattedHtml = formatMarkdown(message.text);
+
   if (message.type === 'system') {
     return (
       <div
@@ -429,7 +440,7 @@ function MessageRow({ message }: { message: Message }) {
         data-testid={`sys-event-${message.id}`}
       >
         <Icon name={message.icon} size={12} />
-        <span dangerouslySetInnerHTML={{ __html: message.text }} />
+        <span dangerouslySetInnerHTML={{ __html: formattedHtml }} />
       </div>
     );
   }
@@ -448,7 +459,7 @@ function MessageRow({ message }: { message: Message }) {
           <span>{time}</span>
         </div>
         <div className={`wf-bubble ${message.bubbleStyle ?? ''}`}>
-          <span dangerouslySetInnerHTML={{ __html: message.text }} />
+          <span dangerouslySetInnerHTML={{ __html: formattedHtml }} />
           {message.images && message.images.length > 0 && (
             <ProductImageGallery images={message.images} />
           )}

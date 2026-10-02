@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Icon } from '@/components/Icon';
 import type { WorkflowSessionApi } from '@/hooks/useWorkflowSession';
+import { formatMarkdown } from '@/utils/markdown';
 
 type Tab = 'context' | 'trace' | 'kb';
 
@@ -163,7 +164,7 @@ export function ContextPanel({ session, tab, onTabChange, onClose }: Props) {
                     />
                     <span
                       className="wf-tr-txt"
-                      dangerouslySetInnerHTML={{ __html: t.title }}
+                      dangerouslySetInnerHTML={{ __html: formatMarkdown(t.title) }}
                     />
                   </div>
                 );

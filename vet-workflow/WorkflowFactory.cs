@@ -6,7 +6,7 @@ namespace VetWorkflow;
 public static class WorkflowFactory
 {
     /// <summary>
-    /// Constrói o fluxo de trabalho VetAssistant com Microsoft Agent Framework e branching condicional.
+    /// Constrói o fluxo de trabalho VetAssistant com Microsoft Agent Framework, branching condicional e transições dinâmicas.
     /// </summary>
     internal static Workflow BuildVetAssistantWorkflow(IChatClient chatClient, IUserInteractor userInteractor)
     {
@@ -52,11 +52,16 @@ public static class WorkflowFactory
             .AddEdge(patientFileExec, postCareExec, condition: GetPostCareCondition())
             .AddEdge(patientFileExec, vetHandoffExec, condition: GetVetHandoffCondition())
 
-            // Fan-in: Todas as rotas convergem para FollowUp
+            // Branching dinâmico pós-atendimento do veterinário:
+            // 1. Se o veterinário orientou marcar consulta -> Agente de Agendamento assume
+            .AddEdge(vetHandoffExec, schedulingExec, condition: GetHandoffNeedsSchedulingCondition())
+            // 2. Se o veterinário concluiu sem necessidade de agendamento -> segue para Follow-Up
+            .AddEdge(vetHandoffExec, followUpExec, condition: GetHandoffCompletedCondition())
+
+            // Fan-in: As rotas convergem para FollowUp
             .AddEdge(emergencyExec, followUpExec)
             .AddEdge(schedulingExec, followUpExec)
             .AddEdge(postCareExec, followUpExec)
-            .AddEdge(vetHandoffExec, followUpExec)
 
             // FollowUp para Resumo Clínico Final
             .AddEdge(followUpExec, summaryExec)
@@ -78,6 +83,12 @@ public static class WorkflowFactory
 
     private static Func<object?, bool> GetVetHandoffCondition() =>
         res => res is VetWorkflowContext ctx && !IsSchedulingTheme(ctx.Triage.Theme) && ctx.Triage.Theme != "orientação_pós_consulta";
+
+    private static Func<object?, bool> GetHandoffNeedsSchedulingCondition() =>
+        res => res is VetWorkflowContext ctx && ctx.NextAction == "scheduling";
+
+    private static Func<object?, bool> GetHandoffCompletedCondition() =>
+        res => res is VetWorkflowContext ctx && ctx.NextAction != "scheduling";
 
     private static bool IsSchedulingTheme(string theme) =>
         theme is "vacina" or "retorno" or "exame" or "vermifugação" or "castração" or "consulta" or "agendamento";

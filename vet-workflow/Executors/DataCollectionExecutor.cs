@@ -6,7 +6,7 @@ using Microsoft.Extensions.AI;
 namespace VetWorkflow;
 
 /// <summary>
-/// Executor responsável por coletar e estruturar as informações essenciais do paciente e tutor de forma conversacional.
+/// Executor responsável por coletar e estruturar as informações essenciais do paciente e tutor de forma conversacional e inteligente.
 /// </summary>
 internal sealed class DataCollectionExecutor : Executor<VetWorkflowContext, VetWorkflowContext>
 {
@@ -27,7 +27,7 @@ internal sealed class DataCollectionExecutor : Executor<VetWorkflowContext, VetW
 
         var history = new List<ChatMessage>
         {
-            new(ChatRole.User, $"Relato e histórico da conversa com o tutor:\n\"{workflowContext.InitialUserMessage}\"\nTema identificado na triagem: {workflowContext.Triage.Theme}. Extraia e estruture os dados do animal e tutor.")
+            new(ChatRole.User, $"Histórico completo da conversa até o momento:\n\"{workflowContext.InitialUserMessage}\"\nTema da triagem: {workflowContext.Triage.Theme}. Identifique e estruture os dados do pet.")
         };
 
         const int MaxCollectionClarifications = 2;
@@ -38,27 +38,33 @@ internal sealed class DataCollectionExecutor : Executor<VetWorkflowContext, VetW
         {
             var response = await _dataCollectorAgent.RunAsync(history, cancellationToken: cancellationToken);
 
+            Logger.LogInfo($"[DataCollectionExecutor] Resposta do agente: {response.Text}");
+
             if (AgentResponseParser.TryDeserializeAgentResponse<PatientData>(response.Text, out var parsedPatient) && parsedPatient != null)
             {
                 patient = parsedPatient;
             }
 
-            // Se os dados essenciais (nome do animal e espécie) já foram fornecidos ou se o agente marcou como completo
-            bool hasEssentialData = !string.IsNullOrWhiteSpace(patient.PetName) && !string.IsNullOrWhiteSpace(patient.Species);
+            // Normalização semântica de espécie em português
+            ApplySpeciesHeuristics(workflowContext.InitialUserMessage, patient);
+
+            // Se os dados essenciais (nome do animal e espécie) já foram identificados ou se o agente marcou como completo
+            bool hasEssentialData = !string.IsNullOrWhiteSpace(patient.PetName) 
+                && !string.Equals(patient.PetName, "Pet", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(patient.Species);
 
             if (hasEssentialData || patient.IsComplete || attempts >= MaxCollectionClarifications)
             {
+                patient.IsComplete = true;
                 break;
             }
 
-            // Caso faltem dados fundamentais (ex: tutor não informou o nome do pet nem espécie)
+            // Caso faltem dados fundamentais, formula pergunta contextual
             await _userInteractor.SetAgentTypingAsync("Organizando informações do paciente...", false, cancellationToken);
 
-            string question = !string.IsNullOrWhiteSpace(patient.QuestionForTutor)
-                ? patient.QuestionForTutor
-                : "Para organizarmos a ficha do atendimento, você poderia me informar o nome do seu pet e se é cão ou gato?";
+            string question = GenerateContextualQuestion(workflowContext.InitialUserMessage, patient);
 
-            await _userInteractor.PublishTraceAsync("Solicitando dados cadastrais complementares do pet...", "info", cancellationToken);
+            await _userInteractor.PublishTraceAsync($"Solicitando dados pendentes: {question}", "info", cancellationToken);
             history.Add(new ChatMessage(ChatRole.Assistant, question));
 
             string tutorAnswer = await _userInteractor.GetUserResponseAsync(
@@ -98,5 +104,58 @@ internal sealed class DataCollectionExecutor : Executor<VetWorkflowContext, VetW
 
         await context.YieldOutputAsync(workflowContext, cancellationToken);
         return workflowContext;
+    }
+
+    private static void ApplySpeciesHeuristics(string text, PatientData patient)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        var lower = text.ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(patient.Species) || patient.Species.Equals("outro", StringComparison.OrdinalIgnoreCase))
+        {
+            if (lower.Contains("cadela") || lower.Contains("cadelinha") || lower.Contains("cão") || lower.Contains("cao") || lower.Contains("cachorro") || lower.Contains("cachorrinha"))
+            {
+                patient.Species = "cão";
+            }
+            else if (lower.Contains("gata") || lower.Contains("gato") || lower.Contains("gatinha") || lower.Contains("gatinho") || lower.Contains("felin"))
+            {
+                patient.Species = "gato";
+            }
+        }
+    }
+
+    private static string GenerateContextualQuestion(string userText, PatientData patient)
+    {
+        if (!string.IsNullOrWhiteSpace(patient.QuestionForTutor))
+        {
+            // Se o agente sugeriu pergunta, verifica se ela não pergunta coisas que já sabemos
+            bool knowsSpecies = !string.IsNullOrWhiteSpace(patient.Species);
+            if (!knowsSpecies || (!patient.QuestionForTutor.Contains("cão ou gato", StringComparison.OrdinalIgnoreCase) && !patient.QuestionForTutor.Contains("cao ou gato", StringComparison.OrdinalIgnoreCase)))
+            {
+                return patient.QuestionForTutor;
+            }
+        }
+
+        var lower = userText.ToLowerInvariant();
+        bool isFemaleDog = lower.Contains("cadela") || lower.Contains("cadelinha");
+        bool isDog = isFemaleDog || lower.Contains("cão") || lower.Contains("cao") || lower.Contains("cachorro");
+        bool isCat = lower.Contains("gata") || lower.Contains("gato") || lower.Contains("felin");
+
+        if (isFemaleDog)
+        {
+            return "Como se chama a sua cadelinha e qual a idade ou peso aproximado dela para anotarmos na ficha?";
+        }
+
+        if (isDog)
+        {
+            return "Como se chama o seu cãozinho e qual a idade ou peso aproximado dele para anotarmos na ficha?";
+        }
+
+        if (isCat)
+        {
+            return "Como se chama o seu gatinho(a) e qual a idade aproximada para anotarmos na ficha?";
+        }
+
+        return "Para organizarmos a ficha do atendimento, você poderia me informar o nome do seu pet e qual a espécie dele (cão ou gato)?";
     }
 }

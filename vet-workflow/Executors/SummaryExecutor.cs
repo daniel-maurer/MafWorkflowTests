@@ -20,7 +20,7 @@ internal sealed class SummaryExecutor : Executor<VetWorkflowContext, ClinicalSum
     public override async ValueTask<ClinicalSummary> HandleAsync(VetWorkflowContext workflowContext, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         await _userInteractor.PublishAgentStateAsync("summary", "active", "Gerando Resumo", cancellationToken);
-        await _userInteractor.PublishTraceAsync("[Resumo Clínico] Consolidando síntese para o veterinário...", "info", cancellationToken);
+        await _userInteractor.PublishTraceAsync("[Resumo Clínico] Consolidando síntese do atendimento para o prontuário...", "info", cancellationToken);
 
         string patientId = string.IsNullOrWhiteSpace(workflowContext.Patient.PatientId) 
             ? "PAT-PENDING" 
@@ -33,12 +33,16 @@ internal sealed class SummaryExecutor : Executor<VetWorkflowContext, ClinicalSum
         }
         else if (workflowContext.Appointment is not null)
         {
-            pendingActions.Add($"Confirmar agendamento em {workflowContext.Appointment.ScheduledDateTime}");
+            pendingActions.Add($"Agendamento confirmado para {workflowContext.Appointment.ScheduledDateTime} ({workflowContext.Appointment.AppointmentType})");
         }
         else if (workflowContext.HandedOffToVet)
         {
-            pendingActions.Add("Revisar histórico e responder diretamente ao tutor no chat");
+            pendingActions.Add("Atendimento finalizado pelo veterinário no chat");
         }
+
+        string vetGuidancePart = !string.IsNullOrWhiteSpace(workflowContext.VetInstructions)
+            ? $"\n• **Orientação do Veterinário:** {workflowContext.VetInstructions}"
+            : string.Empty;
 
         var summary = new ClinicalSummary
         {
@@ -58,14 +62,15 @@ internal sealed class SummaryExecutor : Executor<VetWorkflowContext, ClinicalSum
         await VetSummaryTools.GenerateClinicalSummary(patientId, workflowContext.SessionId, cancellationToken);
         await VetSummaryTools.UpdatePendingDashboard(patientId, workflowContext.Triage.Urgency, summary.ConversationSummary, cancellationToken);
 
-        await _userInteractor.PublishTraceAsync($"[Painel Atualizado] Resumo pronto para o prontuário de {workflowContext.Patient.PetName}", "success", cancellationToken);
+        await _userInteractor.PublishTraceAsync($"[Prontuário Finalizado] Resumo pronto para o prontuário de {workflowContext.Patient.PetName}", "success", cancellationToken);
 
         // Envia mensagem estruturada no painel do veterinário/atendente
-        string attendantSummaryCard = $"📝 **Resumo Pré-Consulta (Uso do Profissional):**\n" +
+        string attendantSummaryCard = $"📝 **Resumo do Atendimento (Prontuário):**\n" +
             $"• **Paciente:** {workflowContext.Patient.PetName} ({workflowContext.Patient.Species} - {workflowContext.Patient.Breed ?? "SRD"})\n" +
             $"• **Classificação:** {workflowContext.Triage.Urgency} ({workflowContext.Triage.Theme})\n" +
-            $"• **Queixa / Relato:** {workflowContext.InitialUserMessage}\n" +
-            $"• **Pendências:** {string.Join("; ", pendingActions)}";
+            $"• **Relato Inicial:** {workflowContext.Patient.Symptoms ?? workflowContext.InitialUserMessage}" +
+            vetGuidancePart + "\n" +
+            $"• **Status / Ações:** {string.Join("; ", pendingActions)}";
 
         await _userInteractor.SendUserResponseAsync(
             attendantSummaryCard,

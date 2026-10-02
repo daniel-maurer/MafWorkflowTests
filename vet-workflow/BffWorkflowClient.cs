@@ -130,7 +130,15 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             return;
         }
 
-        var session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id));
+        if (_sessions.TryRemove(command.SessionId, out var oldSession))
+        {
+            await oldSession.DisposeAsync();
+        }
+
+        _lastUserMessages.TryRemove(command.SessionId, out _);
+
+        var session = CreateSession(command.SessionId);
+        _sessions[command.SessionId] = session;
         await session.StartAsync(command.InitialMessage ?? string.Empty);
 
         if (!string.IsNullOrWhiteSpace(command.InitialMessage))
@@ -152,11 +160,13 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private async Task HandleUserMessageAsync(MafUserMessageCommand command)
     {
-        if (!_sessions.TryGetValue(command.SessionId, out var session))
+        // Se a sessão não existir (por exemplo após um reset de sessão), recria imediatamente
+        var session = _sessions.GetOrAdd(command.SessionId, id =>
         {
-            // Sessão pertence a outro worker
-            return;
-        }
+            var s = CreateSession(id);
+            _ = s.StartAsync(string.Empty);
+            return s;
+        });
 
         var now = DateTime.UtcNow;
         if (_lastUserMessages.TryGetValue(command.SessionId, out var last)
@@ -239,14 +249,24 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await session.DisposeAsync();
         }
 
+        _lastUserMessages.TryRemove(command.SessionId, out _);
+
+        // Prepara imediatamente uma nova sessão viva e pronta para a próxima mensagem do tutor
+        var newSession = CreateSession(command.SessionId);
+        _sessions[command.SessionId] = newSession;
+        await newSession.StartAsync(string.Empty);
+
+        await PublishPublicEventAsync(command.SessionId, "splitMode", false);
+        await PublishAgentStateAsync(command.SessionId, "vet-triage", "idle", "Pronto");
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
             Status = "idle",
-            ChatTitle = "Workflow reiniciado",
-            ChatSubtitle = "A sessão foi limpa.",
-            ActiveAgentId = string.Empty,
+            ChatTitle = "Atendimento Reiniciado",
+            ChatSubtitle = "Envie uma mensagem para iniciar um novo atendimento.",
+            ActiveAgentId = "vet-triage",
             HumanMode = false
         });
+        await PublishTraceAsync(command.SessionId, "Workflow reiniciado com sucesso. Pronto para nova conversa.", "info");
     }
 
     private async Task PublishMessageAsync(string sessionId, MafMessagePayload payload)

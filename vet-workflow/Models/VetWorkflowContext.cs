@@ -14,4 +14,14 @@ public sealed class VetWorkflowContext
     public ClinicalSummary? Summary { get; set; }
     public bool HandedOffToVet { get; set; } = false;
     public bool EmergencyAlertSent { get; set; } = false;
+
+    /// <summary>
+    /// Próxima ação dinâmica determinada pós-avaliação (ex: "scheduling", "completed").
+    /// </summary>
+    public string NextAction { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Orientações ou mensagens registradas pelo veterinário humano durante o split-mode.
+    /// </summary>
+    public string VetInstructions { get; set; } = string.Empty;
 }
