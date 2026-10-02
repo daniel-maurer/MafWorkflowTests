@@ -94,6 +94,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 app.UseCors("Frontend");
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -214,11 +215,37 @@ api.MapGet("/scenarios", async (string workflowId, IWorkflowConfigStore configs,
 
 // ===== Simulation Endpoints for Sales Workflow =====
 
-api.MapGet("/products/{sku}/image", (string sku) =>
+api.MapGet("/products/{sku}/image", (string sku, IWebHostEnvironment env) =>
 {
-    var placeholder = $"https://placehold.co/400x400/2563eb/white?text={Uri.EscapeDataString(sku)}";
-    return Results.Redirect(placeholder);
-}).WithTags("Sales Simulation");
+    var extensions = new[] { ".svg", ".webp", ".png", ".jpg", ".jpeg" };
+    var webRoot = env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+    foreach (var ext in extensions)
+    {
+        var path = Path.Combine(webRoot, "images", "products", $"{sku}{ext}");
+        if (File.Exists(path))
+        {
+            var contentType = ext switch
+            {
+                ".svg" => "image/svg+xml",
+                ".webp" => "image/webp",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                _ => "application/octet-stream"
+            };
+            return Results.File(path, contentType);
+        }
+    }
+
+    var fallbackSvg = $"""
+        <svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+            <rect width="300" height="300" rx="16" fill="#1e293b"/>
+            <rect x="20" y="20" width="260" height="260" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+            <text x="150" y="140" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="14" font-weight="bold">PRODUTO</text>
+            <text x="150" y="170" text-anchor="middle" fill="#38bdf8" font-family="sans-serif" font-size="16" font-weight="bold">{sku}</text>
+        </svg>
+        """;
+    return Results.Content(fallbackSvg, "image/svg+xml");
+}).WithTags("Sales Simulation").AllowAnonymous();
 
 api.MapGet("/products/{sku}/price", (string sku) =>
 {

@@ -82,7 +82,8 @@ public static class TracePresentation
             backend.Tools,
             backend.CreatedAt,
             backend.SplitMirror,
-            backend.Audience);
+            backend.Audience,
+            backend.Images);
     }
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
-import type { Message, MessageAudience } from '@/types/workflow';
+import type { Message, MessageAudience, MessageImage } from '@/types/workflow';
 import type { WorkflowSessionApi } from '@/hooks/useWorkflowSession';
+import { env } from '@/config/env';
 
 interface Props {
   session: WorkflowSessionApi;
@@ -48,6 +49,8 @@ export function ChatPanel({ session, onOpenPipeline, onOpenDetails }: Props) {
   const isSplit = snapshot.splitMode;
   const isClosed = snapshot.status === 'resolved';
 
+  const sendingRef = useRef(false);
+
   // Auto-scroll on new messages
   useEffect(() => {
     singleRef.current?.scrollTo({ top: singleRef.current.scrollHeight, behavior: 'smooth' });
@@ -57,43 +60,76 @@ export function ChatPanel({ session, onOpenPipeline, onOpenDetails }: Props) {
 
   async function onSendMain(e?: React.FormEvent) {
     e?.preventDefault();
+    e?.stopPropagation();
+    if (sendingRef.current) return;
     const text = input.trim();
     if (!text) return;
+
+    sendingRef.current = true;
     setInput('');
-    await sendUserMessage(text);
+    try {
+      await sendUserMessage(text);
+    } finally {
+      setTimeout(() => {
+        sendingRef.current = false;
+      }, 250);
+    }
   }
 
   async function onSendUser(e?: React.FormEvent) {
     e?.preventDefault();
+    e?.stopPropagation();
+    if (sendingRef.current) return;
     const text = userInput.trim();
     if (!text) return;
+
+    sendingRef.current = true;
     setUserInput('');
-    await sendUserMessage(text);
+    try {
+      await sendUserMessage(text);
+    } finally {
+      setTimeout(() => {
+        sendingRef.current = false;
+      }, 250);
+    }
   }
 
   async function onSendHuman(e?: React.FormEvent) {
     e?.preventDefault();
+    e?.stopPropagation();
+    if (sendingRef.current) return;
     const text = humanInput.trim();
     if (!text) return;
+
+    sendingRef.current = true;
     setHumanInput('');
-    await sendHumanMessage(text);
+    try {
+      await sendHumanMessage(text);
+    } finally {
+      setTimeout(() => {
+        sendingRef.current = false;
+      }, 250);
+    }
   }
 
   function onMainKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      e.stopPropagation();
       void onSendMain();
     }
   }
   function onUserKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      e.stopPropagation();
       void onSendUser();
     }
   }
   function onHumanKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      e.stopPropagation();
       void onSendHuman();
     }
   }
@@ -349,6 +385,42 @@ function mirrorForHumanPane(m: Message): Message {
   return m;
 }
 
+function resolveImageUrl(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const base = env.apiBaseUrl ? env.apiBaseUrl.replace(/\/$/, '') : '';
+  return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+function ProductImageGallery({ images }: { images: MessageImage[] }) {
+  return (
+    <div className="wf-product-gallery" data-testid="product-gallery">
+      {images.map((img, idx) => {
+        const fullUrl = resolveImageUrl(img.url);
+        return (
+          <div key={idx} className="wf-product-card" title={img.alt || img.sku || ''}>
+            <img
+              src={fullUrl}
+              alt={img.alt || img.sku || 'Product image'}
+              className="wf-product-img"
+              loading="lazy"
+              onError={(e) => {
+                if (img.sku) {
+                  const fallback = resolveImageUrl(`/api/products/${img.sku}/image`);
+                  if ((e.target as HTMLImageElement).src !== fallback) {
+                    (e.target as HTMLImageElement).src = fallback;
+                  }
+                }
+              }}
+            />
+            {img.alt && <span className="wf-product-label">{img.alt}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MessageRow({ message }: { message: Message }) {
   if (message.type === 'system') {
     return (
@@ -377,6 +449,9 @@ function MessageRow({ message }: { message: Message }) {
         </div>
         <div className={`wf-bubble ${message.bubbleStyle ?? ''}`}>
           <span dangerouslySetInnerHTML={{ __html: message.text }} />
+          {message.images && message.images.length > 0 && (
+            <ProductImageGallery images={message.images} />
+          )}
           {message.tools?.map((t, i) => (
             <div key={i} className="wf-tool-call">
               <Icon name="terminal" size={10} />

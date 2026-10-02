@@ -79,6 +79,12 @@ export interface ToolCall {
  */
 export type MessageAudience = 'both' | 'client' | 'attendant' | 'internal';
 
+export interface MessageImage {
+  url: string;
+  alt: string;
+  sku?: string;
+}
+
 export interface Message {
   id: string;
   type: 'message' | 'system' | 'typing';
@@ -95,6 +101,7 @@ export interface Message {
   splitMirror?: boolean;
   /** Visibility scope; defaults to "both" if absent so older payloads stay compatible. */
   audience?: MessageAudience;
+  images?: MessageImage[];
 }
 
 export interface TraceEvent {

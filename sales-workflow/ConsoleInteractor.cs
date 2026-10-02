@@ -35,7 +35,7 @@ internal static class WorkflowControlTokens
 internal interface IUserInteractor
 {
     Task<string> GetUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
-    Task SendUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
+    Task SendUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, IReadOnlyList<MafImagePayload>? images = null, CancellationToken cancellationToken = default);
     Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string audience = MessageAudience.Both, CancellationToken cancellationToken = default);
     Task SetAgentTypingAsync(string label, bool on, CancellationToken cancellationToken = default);
     Task PublishTraceAsync(string title, string level = "info", CancellationToken cancellationToken = default);

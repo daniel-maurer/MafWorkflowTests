@@ -14,6 +14,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private readonly IChatClient _chatClient;
     private readonly HubConnection _connection;
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, (string Text, DateTime Timestamp)> _lastUserMessages = new();
     private readonly Func<IUserInteractor, Workflow> _workflowFactory;
 
 
@@ -36,7 +37,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         await _connection.StartAsync(cancellationToken);
-        await _connection.InvokeAsync("RegisterWorker", _configuration.WorkerId, new[] { "support", "incident-triage" }, cancellationToken);
+        await _connection.InvokeAsync("RegisterWorker", _configuration.WorkerId, new[] { "support" }, cancellationToken);
         await PublishTraceAsync(string.Empty, "MAF worker connected to BFF.");
     }
 
@@ -144,6 +145,16 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             // Esta sessão pertence a outro workflow/worker em execução
             return;
         }
+
+        var now = DateTime.UtcNow;
+        if (_lastUserMessages.TryGetValue(command.SessionId, out var last)
+            && last.Text == command.Text
+            && (now - last.Timestamp).TotalMilliseconds < 1500)
+        {
+            Logger.LogWarning($"[Deduplication] User message duplicate ignored for session {command.SessionId}: '{command.Text}'");
+            return;
+        }
+        _lastUserMessages[command.SessionId] = (command.Text, now);
 
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
         await PublishTraceAsync(command.SessionId, "User message received.");

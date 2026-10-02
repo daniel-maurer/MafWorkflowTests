@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg_nike" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18181b"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="shoe_main" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#be123c"/>
+    </linearGradient>
+    <linearGradient id="sole" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Card -->
+  <rect width="400" height="400" rx="24" fill="url(#bg_nike)"/>
+  <rect x="12" y="12" width="376" height="376" rx="20" fill="none" stroke="#27272a" stroke-width="2"/>
+
+  <!-- Brand & Category Header -->
+  <text x="32" y="44" fill="#a1a1aa" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" letter-spacing="1">NIKE • CALÇADOS</text>
+  <rect x="290" y="28" width="78" height="24" rx="12" fill="#22c55e" fill-opacity="0.2"/>
+  <text x="329" y="44" fill="#4ade80" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" text-anchor="middle">EM ESTOQUE</text>
+
+  <!-- Sneaker Illustration -->
+  <g transform="translate(60, 60)">
+    <!-- Sole & Air Unit -->
+    <path d="M 20 180 C 60 180, 200 185, 270 170 C 275 180, 260 205, 240 205 C 160 205, 50 205, 10 200 C 5 190, 10 180, 20 180 Z" fill="url(#sole)"/>
+    <!-- Air bubble window -->
+    <rect x="40" y="185" width="45" height="12" rx="6" fill="#0284c7" stroke="#38bdf8" stroke-width="1.5"/>
+
+    <!-- Shoe Upper Body -->
+    <path d="M 20 180 C 15 150, 45 95, 80 90 C 110 85, 130 115, 160 135 C 195 145, 235 155, 270 170 C 255 178, 220 180, 180 180 Z" fill="#27272a" stroke="#3f3f46" stroke-width="2"/>
+    <path d="M 50 140 C 70 110, 110 100, 140 125 C 110 145, 75 160, 50 170 Z" fill="url(#shoe_main)"/>
+
+    <!-- Swoosh -->
+    <path d="M 70 150 Q 140 130, 200 120 C 160 155, 110 170, 70 150 Z" fill="#ffffff" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.5))"/>
+
+    <!-- Laces / Collar -->
+    <path d="M 85 95 L 135 130" stroke="#f43f5e" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 98 105 L 148 140" stroke="#f43f5e" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- Product Details Footer -->
+  <rect x="24" y="280" width="352" height="96" rx="16" fill="#18181b" fill-opacity="0.9" stroke="#27272a" stroke-width="1.5"/>
+  <text x="44" y="312" fill="#fafafa" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700">Nike Air Max 90</text>
+  <text x="44" y="334" fill="#a1a1aa" font-family="system-ui, -apple-system, sans-serif" font-size="13">Sneaker Esportivo • Preto/Infrared • Tam 42</text>
+  <text x="44" y="360" fill="#f43f5e" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="800">R$ 899,90</text>
+  <text x="160" y="360" fill="#71717a" font-family="system-ui, -apple-system, sans-serif" font-size="12">10x R$ 89,99 sem juros</text>
+</svg>

@@ -88,11 +88,21 @@ function reducer(state: State, action: Action): State {
     case 'event': {
       const ev = action.ev;
       switch (ev.type) {
-        case 'message':
+        case 'message': {
           if (state.messages.some((m) => m.id === ev.message.id)) {
             return state;
           }
+          if (ev.message.senderType === 'user') {
+            const lastMsg = state.messages[state.messages.length - 1];
+            if (lastMsg && lastMsg.senderType === 'user' && lastMsg.text === ev.message.text) {
+              const diffMs = Math.abs(new Date(ev.message.createdAt).getTime() - new Date(lastMsg.createdAt).getTime());
+              if (isNaN(diffMs) || diffMs < 3000) {
+                return state;
+              }
+            }
+          }
           return { ...state, messages: [...state.messages, ev.message] };
+        }
         case 'trace':
           return { ...state, trace: [...state.trace, ev.event] };
         case 'kb':

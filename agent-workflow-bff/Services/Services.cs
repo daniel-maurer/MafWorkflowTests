@@ -272,28 +272,40 @@ public sealed class InMemorySessionRegistry(IWorkflowConfigStore configs) : ISes
     };
 }
 
-public sealed class MafCommandPublisher(IHubContext<MafBridgeHub> hubContext, ILogger<MafCommandPublisher> logger) : IMafCommandPublisher
+public sealed class MafCommandPublisher(
+    IHubContext<MafBridgeHub> hubContext,
+    ISessionRegistry sessionRegistry,
+    ILogger<MafCommandPublisher> logger) : IMafCommandPublisher
 {
     private readonly ILogger<MafCommandPublisher> _logger = logger;
     private readonly IHubContext<MafBridgeHub> _hubContext = hubContext;
+    private readonly ISessionRegistry _sessionRegistry = sessionRegistry;
 
     public Task StartWorkflowAsync(MafStartWorkflowCommand command, CancellationToken cancellationToken) =>
         LogAndSend(MafGroups.WorkflowWorkers(command.WorkflowId), "startWorkflow", command, cancellationToken);
 
     public Task SendUserMessageAsync(MafUserMessageCommand command, CancellationToken cancellationToken) =>
-        LogAndSend(MafGroups.Workers, "userMessage", command, cancellationToken);
+        LogAndSend(ResolveGroup(command.SessionId), "userMessage", command, cancellationToken);
 
     public Task SendHumanMessageAsync(MafHumanMessageCommand command, CancellationToken cancellationToken) =>
-        LogAndSend(MafGroups.Workers, "humanMessage", command, cancellationToken);
+        LogAndSend(ResolveGroup(command.SessionId), "humanMessage", command, cancellationToken);
 
     public Task RunScenarioAsync(MafRunScenarioCommand command, CancellationToken cancellationToken) =>
-        LogAndSend(MafGroups.Workers, "runScenario", command, cancellationToken);
+        LogAndSend(ResolveGroup(command.SessionId), "runScenario", command, cancellationToken);
 
     public Task MarkSolvedAsync(MafSessionCommand command, CancellationToken cancellationToken) =>
-        LogAndSend(MafGroups.Workers, "markSolved", command, cancellationToken);
+        LogAndSend(ResolveGroup(command.SessionId), "markSolved", command, cancellationToken);
 
     public Task ResetWorkflowAsync(MafSessionCommand command, CancellationToken cancellationToken) =>
-        LogAndSend(MafGroups.Workers, "resetWorkflow", command, cancellationToken);
+        LogAndSend(ResolveGroup(command.SessionId), "resetWorkflow", command, cancellationToken);
+
+    private string ResolveGroup(string sessionId)
+    {
+        var snapshot = _sessionRegistry.GetSnapshot(sessionId);
+        return snapshot != null && !string.IsNullOrWhiteSpace(snapshot.WorkflowId)
+            ? MafGroups.WorkflowWorkers(snapshot.WorkflowId)
+            : MafGroups.Workers;
+    }
 
     private Task LogAndSend(string groupName, string methodName, object payload, CancellationToken cancellationToken)
     {

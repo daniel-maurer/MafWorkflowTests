@@ -26,7 +26,6 @@ export function WorkflowsPage() {
       .then((list) => {
         if (cancelled) return;
         setWorkflows(list);
-        if (list.length > 0) setSelected(new Set([list[0].id]));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load workflows.');

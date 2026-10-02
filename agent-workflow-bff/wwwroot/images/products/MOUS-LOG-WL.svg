@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg_mouse" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="mouse_body" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="wheel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Card -->
+  <rect width="400" height="400" rx="24" fill="url(#bg_mouse)"/>
+  <rect x="12" y="12" width="376" height="376" rx="20" fill="none" stroke="#312e81" stroke-width="2"/>
+
+  <!-- Brand & Category Header -->
+  <text x="32" y="44" fill="#a5b4fc" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" letter-spacing="1">LOGITECH • PERIFÉRICOS</text>
+  <rect x="290" y="28" width="78" height="24" rx="12" fill="#22c55e" fill-opacity="0.2"/>
+  <text x="329" y="44" fill="#4ade80" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" text-anchor="middle">EM ESTOQUE</text>
+
+  <!-- Mouse Illustration -->
+  <g transform="translate(130, 60)">
+    <!-- Mouse Body -->
+    <path d="M 70 20 C 115 20, 135 60, 135 125 C 135 190, 110 215, 70 215 C 30 215, 5 190, 5 125 C 5 60, 25 20, 70 20 Z" fill="url(#mouse_body)" stroke="#475569" stroke-width="2" filter="drop-shadow(0 12px 20px rgba(0,0,0,0.4))"/>
+    <!-- Button Split Line -->
+    <path d="M 70 20 L 70 85" stroke="#475569" stroke-width="2"/>
+    <path d="M 25 85 Q 70 95, 115 85" fill="none" stroke="#475569" stroke-width="1.5"/>
+    <!-- Scroll Wheel -->
+    <rect x="63" y="40" width="14" height="30" rx="7" fill="url(#wheel)" stroke="#7dd3fc" stroke-width="1.5"/>
+    <!-- Wireless Wave Signal -->
+    <path d="M 60 5 A 15 15 0 0 1 80 5" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 52 -3 A 25 25 0 0 1 88 -3" fill="none" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.6" stroke-linecap="round"/>
+    <!-- Logitech G logo stylized dot -->
+    <circle cx="70" cy="150" r="12" fill="none" stroke="#64748b" stroke-width="2"/>
+    <circle cx="70" cy="150" r="4" fill="#38bdf8"/>
+  </g>
+
+  <!-- Product Details Footer -->
+  <rect x="24" y="280" width="352" height="96" rx="16" fill="#1e1b4b" fill-opacity="0.8" stroke="#312e81" stroke-width="1.5"/>
+  <text x="44" y="312" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700">Mouse Logitech M280</text>
+  <text x="44" y="334" fill="#a5b4fc" font-family="system-ui, -apple-system, sans-serif" font-size="13">Wireless 2.4GHz • Ergonômico • Pilha até 18 meses</text>
+  <text x="44" y="360" fill="#38bdf8" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="800">R$ 79,90</text>
+  <text x="145" y="360" fill="#64748b" font-family="system-ui, -apple-system, sans-serif" font-size="12">Pix R$ 75,90 (5% off)</text>
+</svg>

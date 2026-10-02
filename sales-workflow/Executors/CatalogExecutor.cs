@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
+using SalesWorkflow.AiTools;
 using SalesWorkflow.Models;
 
 namespace SalesWorkflow.Executors;
@@ -52,11 +53,19 @@ internal sealed class CatalogExecutor : Executor<IntentResult, CatalogResult>
             return directHandoff;
         }
 
+        CatalogTools.ResetSearchCounter();
+
         var prompt = $@"O cliente possui a intenção '{intentResult.Intent}'.
 Termo de busca extraído: '{intentResult.ExtractedProductQuery}'.
 Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())}.
 Resumo: {intentResult.Summary}.
-Consulte o catálogo usando suas ferramentas e retorne a resposta no formato JSON de CatalogResult.";
+
+INSTRUÇÕES:
+- Faça no máximo 5 buscas (SearchProducts) usando palavras ou variações diferentes.
+- NUNCA repita o mesmo termo que já buscou.
+- Se encontrar produtos, pare de buscar imediatamente e gere a resposta.
+- Se após até 5 tentativas com termos diferentes não encontrar nada, DESISTA: defina has_results = false e requires_human = true.
+Responda SEMPRE estritamente no esquema JSON de CatalogResult.";
 
         var response = await _catalogAgent.RunAsync(prompt, cancellationToken: cancellationToken);
 
@@ -95,11 +104,21 @@ Consulte o catálogo usando suas ferramentas e retorne a resposta no formato JSO
                 Ok = p.InStock
             }).ToList();
 
+            var images = catalogResult.Products
+                .Where(p => !string.IsNullOrWhiteSpace(p.ImageUrl))
+                .Select(p => new MafImagePayload
+                {
+                    Url = p.ImageUrl,
+                    Alt = p.Name,
+                    Sku = p.Sku
+                }).ToList();
+
             await _userInteractor.SendUserResponseAsync(
                 displayMessage,
                 "catalog",
                 tools: toolCalls,
                 audience: MessageAudience.Both,
+                images: images.Count > 0 ? images : null,
                 cancellationToken: cancellationToken);
         }
         else

@@ -104,11 +104,21 @@ Responda SEMPRE no esquema JSON de SalesAdviceResult.";
                 tools.Add(new AgentToolCall { Name = "GetCompatibleProducts", Args = $"{complementsCount} itens", Ok = true });
             }
 
+            var complementImages = adviceResult.SuggestedComplements
+                .Where(p => !string.IsNullOrWhiteSpace(p.ImageUrl))
+                .Select(p => new MafImagePayload
+                {
+                    Url = p.ImageUrl,
+                    Alt = p.Name,
+                    Sku = p.Sku
+                }).ToList();
+
             await _userInteractor.SendUserResponseAsync(
                 adviceResult.MessageForUser,
                 "sales-advisor",
                 tools: tools,
                 audience: MessageAudience.Both,
+                images: complementImages.Count > 0 ? complementImages : null,
                 cancellationToken: cancellationToken);
         }
 

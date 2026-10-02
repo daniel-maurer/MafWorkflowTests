@@ -14,6 +14,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private readonly Func<IUserInteractor, Workflow> _workflowFactory;
     private readonly HubConnection _connection;
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, (string Text, DateTime Timestamp)> _lastUserMessages = new();
 
     public BffWorkflowClient(
         WorkflowConfiguration configuration,
@@ -156,6 +157,16 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             // Sessão pertence a outro worker
             return;
         }
+
+        var now = DateTime.UtcNow;
+        if (_lastUserMessages.TryGetValue(command.SessionId, out var last)
+            && last.Text == command.Text
+            && (now - last.Timestamp).TotalMilliseconds < 1500)
+        {
+            Logger.LogWarning($"[Deduplication] Mensagem duplicada ignorada para sessão {command.SessionId}: '{command.Text}'");
+            return;
+        }
+        _lastUserMessages[command.SessionId] = (command.Text, now);
 
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
         await PublishTraceAsync(command.SessionId, "Mensagem do tutor recebida.");

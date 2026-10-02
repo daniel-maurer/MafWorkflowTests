@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AgentWorkflow.Bff.Contracts;
+using AgentWorkflow.Bff.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -470,6 +471,135 @@ public class BffFrontendIntegrationTests : IClassFixture<CustomWebApplicationFac
 
         // Verify final context
         Assert.Contains(receivedContexts, c => c.GetProperty("status").GetString() == "resolved" && !c.GetProperty("humanMode").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Scenario_MultiWorker_UserMessage_ShouldNotDuplicate()
+    {
+        using var httpClient = _factory.CreateClient();
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "mock-token:developer");
+
+        // 1. Conectar 3 workers
+        var supportConn = await CreateHubConnectionAsync("hubs/maf", "mock-token:maf-worker");
+        await supportConn.InvokeAsync("RegisterWorker", "support-w", new[] { "support" });
+
+        var salesConn = await CreateHubConnectionAsync("hubs/maf", "mock-token:maf-worker");
+        await salesConn.InvokeAsync("RegisterWorker", "sales-w", new[] { "sales-assistant" });
+
+        var vetConn = await CreateHubConnectionAsync("hubs/maf", "mock-token:maf-worker");
+        await vetConn.InvokeAsync("RegisterWorker", "vet-w", new[] { "vet-assistant" });
+
+        var salesSessions = new HashSet<string>();
+        var supportSessions = new HashSet<string>();
+        var vetSessions = new HashSet<string>();
+
+        // Handlers startWorkflow
+        salesConn.On<MafStartWorkflowCommand>("startWorkflow", cmd => salesSessions.Add(cmd.SessionId));
+        supportConn.On<MafStartWorkflowCommand>("startWorkflow", cmd => supportSessions.Add(cmd.SessionId));
+        vetConn.On<MafStartWorkflowCommand>("startWorkflow", cmd => vetSessions.Add(cmd.SessionId));
+
+        int supportUserMsgCalls = 0;
+        int salesUserMsgCalls = 0;
+        int vetUserMsgCalls = 0;
+
+        supportConn.On<MafUserMessageCommand>("userMessage", async cmd =>
+        {
+            if (!supportSessions.Contains(cmd.SessionId)) return;
+            supportUserMsgCalls++;
+            await supportConn.InvokeAsync("PublishEvent", new MafWorkflowEventEnvelope(
+                cmd.SessionId, "message",
+                new MessageDto(Guid.NewGuid().ToString("N"), "message", "right", "user", "Customer", "user", "user", null, cmd.Text, Array.Empty<ToolCallDto>(), DateTimeOffset.UtcNow, true, "both"),
+                DateTimeOffset.UtcNow));
+        });
+
+        salesConn.On<MafUserMessageCommand>("userMessage", async cmd =>
+        {
+            if (!salesSessions.Contains(cmd.SessionId)) return;
+            salesUserMsgCalls++;
+            await salesConn.InvokeAsync("PublishEvent", new MafWorkflowEventEnvelope(
+                cmd.SessionId, "message",
+                new MessageDto(Guid.NewGuid().ToString("N"), "message", "right", "user", "Customer", "user", "user", null, cmd.Text, Array.Empty<ToolCallDto>(), DateTimeOffset.UtcNow, true, "both"),
+                DateTimeOffset.UtcNow));
+        });
+
+        vetConn.On<MafUserMessageCommand>("userMessage", async cmd =>
+        {
+            if (!vetSessions.Contains(cmd.SessionId)) return;
+            vetUserMsgCalls++;
+            await vetConn.InvokeAsync("PublishEvent", new MafWorkflowEventEnvelope(
+                cmd.SessionId, "message",
+                new MessageDto(Guid.NewGuid().ToString("N"), "message", "right", "user", "Customer", "user", "user", null, cmd.Text, Array.Empty<ToolCallDto>(), DateTimeOffset.UtcNow, true, "both"),
+                DateTimeOffset.UtcNow));
+        });
+
+        // 2. Criar sessão de sales-assistant
+        var request = new CreateWorkflowSessionRequest("sales-assistant", null);
+        var response = await httpClient.PostAsJsonAsync("/api/workflow-sessions", request);
+        var sessionResponse = await response.Content.ReadFromJsonAsync<CreateWorkflowSessionResponse>();
+        Assert.NotNull(sessionResponse);
+        var sessionId = sessionResponse.SessionId;
+
+        // Aguarda startWorkflow
+        await Task.Delay(200);
+        Assert.Contains(sessionId, salesSessions);
+        Assert.DoesNotContain(sessionId, supportSessions);
+        Assert.DoesNotContain(sessionId, vetSessions);
+
+        // 3. Conectar frontend e dar JoinSession
+        var frontendConn = await CreateHubConnectionAsync("hubs/workflow", "mock-token:developer");
+        var receivedMessages = new List<MessageDto>();
+        frontendConn.On<string, MessageDto>("message", (sid, msg) => receivedMessages.Add(msg));
+
+        await frontendConn.InvokeAsync("JoinSession", sessionId);
+        await Task.Delay(100);
+
+        // 4. Frontend envia SendUserMessage UMA vez
+        await frontendConn.InvokeAsync("SendUserMessage", sessionId, "Possuem estoque de camisa de algodão");
+        await Task.Delay(300);
+
+        // Asserções
+        Assert.Equal(1, salesUserMsgCalls);
+        Assert.Equal(0, supportUserMsgCalls);
+        Assert.Equal(0, vetUserMsgCalls);
+        Assert.Single(receivedMessages);
+    }
+
+    [Fact]
+    public async Task Scenario_ProductImageEndpoint_ReturnsImage()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/products/CAM-POLO-AZ-M/image");
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        Assert.Contains("image", mediaType);
+    }
+
+    [Fact]
+    public void Scenario_TracePresentation_EnrichMessage_PreservesImages()
+    {
+        var images = new List<ImageDto>
+        {
+            new("/images/products/CAM-POLO-AZ-M.svg", "Camiseta Polo", "CAM-POLO-AZ-M")
+        };
+        var backend = new BackendMessageDto(
+            "msg_img_1",
+            "message",
+            "left",
+            "agent",
+            "catalog",
+            null,
+            "Encontrei a camiseta polo",
+            Array.Empty<ToolCallDto>(),
+            DateTimeOffset.UtcNow,
+            false,
+            "both",
+            images);
+
+        var enriched = TracePresentation.EnrichMessage(backend, null);
+        Assert.NotNull(enriched.Images);
+        Assert.Single(enriched.Images);
+        Assert.Equal("/images/products/CAM-POLO-AZ-M.svg", enriched.Images[0].Url);
+        Assert.Equal("CAM-POLO-AZ-M", enriched.Images[0].Sku);
     }
 
     public async ValueTask DisposeAsync()

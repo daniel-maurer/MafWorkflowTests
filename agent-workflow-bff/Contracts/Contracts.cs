@@ -63,6 +63,7 @@ public sealed record HumanAgentDto(string Id, string Name, string Icon);
 public sealed record ResolutionStepDto(int Step, string Label, bool Ok);
 public sealed record AgentRuntimeStateDto(string Id, string State, string Tag, IReadOnlyList<string> ActiveTools);
 public sealed record ToolCallDto(string Name, string Args, bool Ok);
+public sealed record ImageDto(string Url, string Alt, string? Sku);
 
 public sealed record MessageDto(
     string Id,
@@ -77,7 +78,8 @@ public sealed record MessageDto(
     IReadOnlyList<ToolCallDto>? Tools,
     DateTimeOffset CreatedAt,
     bool? SplitMirror,
-    string? Audience = "both");
+    string? Audience = "both",
+    IReadOnlyList<ImageDto>? Images = null);
 
 public sealed record TraceEventDto(
     string Id,
@@ -134,7 +136,8 @@ public sealed record BackendMessageDto(
     IReadOnlyList<ToolCallDto>? Tools,
     DateTimeOffset CreatedAt,
     bool? SplitMirror,
-    string? Audience = "both");
+    string? Audience = "both",
+    IReadOnlyList<ImageDto>? Images = null);
 
 public sealed record MafWorkflowEventEnvelope(
     string SessionId,

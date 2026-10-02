@@ -15,6 +15,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private readonly Func<IUserInteractor, Workflow> _workflowFactory;
     private readonly HubConnection _connection;
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, (string Text, DateTime Timestamp)> _lastUserMessages = new();
 
     public BffWorkflowClient(
         WorkflowConfiguration configuration,
@@ -152,6 +153,16 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             // Esta sessão pertence a outro workflow/worker em execução
             return;
         }
+
+        var now = DateTime.UtcNow;
+        if (_lastUserMessages.TryGetValue(command.SessionId, out var last)
+            && last.Text == command.Text
+            && (now - last.Timestamp).TotalMilliseconds < 1500)
+        {
+            Logger.LogWarning($"[Deduplication] Mensagem duplicada ignorada para sessão {command.SessionId}: '{command.Text}'");
+            return;
+        }
+        _lastUserMessages[command.SessionId] = (command.Text, now);
 
         await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
         await PublishTraceAsync(command.SessionId, "Mensagem do cliente recebida.");
@@ -320,7 +331,12 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         };
     }
 
-    private MafMessagePayload CreateAgentMessage(string text, string? agentId, IReadOnlyList<AgentToolCall>? tools, string audience = MessageAudience.Both)
+    private MafMessagePayload CreateAgentMessage(
+        string text,
+        string? agentId,
+        IReadOnlyList<AgentToolCall>? tools,
+        string audience = MessageAudience.Both,
+        IReadOnlyList<MafImagePayload>? images = null)
     {
         return new MafMessagePayload
         {
@@ -340,6 +356,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             CreatedAt = DateTime.UtcNow,
             SplitMirror = false,
             Audience = audience,
+            Images = images,
         };
     }
 
@@ -453,9 +470,15 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             _parent = parent;
         }
 
-        public async Task SendUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
+        public async Task SendUserResponseAsync(
+            string prompt,
+            string? agentId = null,
+            IReadOnlyList<AgentToolCall>? tools = null,
+            string audience = MessageAudience.Both,
+            IReadOnlyList<MafImagePayload>? images = null,
+            CancellationToken cancellationToken = default)
         {
-            await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience));
+            await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience, images));
         }
 
         public async Task SendSystemMessageAsync(string text, string systemStyle = "handoff", string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
@@ -612,6 +635,13 @@ public sealed class MafEventEnvelope
     [JsonPropertyName("sequenceId")] public string SequenceId { get; set; } = string.Empty;
 }
 
+public sealed class MafImagePayload
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = string.Empty;
+    [JsonPropertyName("alt")] public string Alt { get; set; } = string.Empty;
+    [JsonPropertyName("sku")] public string? Sku { get; set; }
+}
+
 public sealed class MafMessagePayload
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
@@ -625,6 +655,7 @@ public sealed class MafMessagePayload
     [JsonPropertyName("createdAt")] public DateTime CreatedAt { get; set; }
     [JsonPropertyName("splitMirror")] public bool SplitMirror { get; set; }
     [JsonPropertyName("audience")] public string Audience { get; set; } = MessageAudience.Both;
+    [JsonPropertyName("images")] public IReadOnlyList<MafImagePayload>? Images { get; set; }
 }
 
 public sealed class MafToolCallPayload

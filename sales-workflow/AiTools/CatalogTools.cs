@@ -31,6 +31,17 @@ public static class CatalogTools
 {
     private static List<ProductInfo>? _catalogCache;
     private static readonly object _lock = new();
+    private static int _searchAttempts = 0;
+    private static readonly HashSet<string> _searchedQueries = new(StringComparer.OrdinalIgnoreCase);
+
+    public static void ResetSearchCounter()
+    {
+        lock (_lock)
+        {
+            _searchAttempts = 0;
+            _searchedQueries.Clear();
+        }
+    }
 
     public static List<ProductInfo> LoadCatalog(string path = "product_catalog.json")
     {
@@ -66,9 +77,9 @@ public static class CatalogTools
         }
     }
 
-    [Description("Pesquisa produtos no catálogo por palavras-chave, nome, SKU ou filtros.")]
+    [Description("Pesquisa produtos no catálogo por palavras-chave, nome, SKU ou filtros. Limite de no máximo 5 tentativas com termos diferentes.")]
     public static async Task<List<ProductInfo>> SearchProducts(
-        [Description("Termo de busca (nome, SKU ou descrição)")] string query,
+        [Description("Termo de busca com palavras-chave diferentes")] string query,
         [Description("Cor desejada (opcional)")] string? color = null,
         [Description("Tamanho desejado (opcional)")] string? size = null,
         [Description("Marca (opcional)")] string? brand = null,
@@ -76,7 +87,27 @@ public static class CatalogTools
         [Description("Preço máximo (opcional)")] decimal? maxPrice = null,
         CancellationToken cancellationToken = default)
     {
-        Logger.LogInfo($"[TOOL] Pesquisando catálogo: '{query}' (cor={color}, tam={size}, marca={brand})");
+        var trimmedQuery = query?.Trim() ?? string.Empty;
+
+        lock (_lock)
+        {
+            if (_searchAttempts >= 5)
+            {
+                Logger.LogWarning($"[TOOL] Limite de 5 tentativas de busca atingido para a query: '{trimmedQuery}'. Encerrando buscas no catálogo.");
+                return [];
+            }
+
+            if (_searchedQueries.Contains(trimmedQuery))
+            {
+                Logger.LogInfo($"[TOOL] Termo repetido ignorado: '{trimmedQuery}'. Tentativa não contada.");
+                return [];
+            }
+
+            _searchAttempts++;
+            _searchedQueries.Add(trimmedQuery);
+        }
+
+        Logger.LogInfo($"[TOOL] Pesquisando catálogo ({_searchAttempts}/5): '{trimmedQuery}' (cor={color}, tam={size}, marca={brand})");
         await Task.Delay(100, cancellationToken);
 
         var catalog = LoadCatalog();
