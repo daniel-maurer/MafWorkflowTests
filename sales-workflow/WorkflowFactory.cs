@@ -16,6 +16,7 @@ public static class WorkflowFactory
         var intentAgent = IntentAgentFactory.GetIntentAgent(chatClient);
         var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient);
         var salesAdvisorAgent = SalesAdvisorAgentFactory.GetSalesAdvisorAgent(chatClient);
+        var decisionAgent = SalesAdvisorAgentFactory.GetCustomerDecisionAgent(chatClient);
         var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient);
         var followUpAgent = FollowUpAgentFactory.GetFollowUpAgent(chatClient);
         var salesRecordAgent = SalesRecordAgentFactory.GetSalesRecordAgent(chatClient);
@@ -23,7 +24,7 @@ public static class WorkflowFactory
         // === Executores ===
         var intentExecutor = new IntentExecutor(intentAgent, interactor);
         var catalogExecutor = new CatalogExecutor(catalogAgent, interactor);
-        var salesAdvisorExecutor = new SalesAdvisorExecutor(salesAdvisorAgent, interactor);
+        var salesAdvisorExecutor = new SalesAdvisorExecutor(salesAdvisorAgent, decisionAgent, interactor);
         var quoteExecutor = new QuoteExecutor(quoteAgent, interactor);
         var followUpExecutor = new FollowUpExecutor(followUpAgent, interactor);
         var humanSellerExecutor = new HumanSellerExecutor(interactor);

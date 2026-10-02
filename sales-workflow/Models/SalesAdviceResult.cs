@@ -21,6 +21,36 @@ public sealed class SalesAdviceResult
 
     [JsonPropertyName("suggested_kits")]
     public List<KitSuggestion> SuggestedKits { get; set; } = [];
+
+    [JsonPropertyName("accepted_kit_name")]
+    public string? AcceptedKitName { get; set; }
+
+    [JsonPropertyName("discount_percent")]
+    public decimal DiscountPercent { get; set; }
+}
+
+public sealed class CustomerChoiceEvaluation
+{
+    [JsonPropertyName("wants_quote")]
+    public bool WantsQuote { get; set; }
+
+    [JsonPropertyName("accepted_kit_name")]
+    public string? AcceptedKitName { get; set; }
+
+    [JsonPropertyName("accepted_skus")]
+    public List<string> AcceptedSkus { get; set; } = [];
+
+    [JsonPropertyName("discount_percent")]
+    public decimal DiscountPercent { get; set; }
+
+    [JsonPropertyName("wants_only_original")]
+    public bool WantsOnlyOriginal { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = string.Empty;
+
+    [JsonPropertyName("message_for_user")]
+    public string MessageForUser { get; set; } = string.Empty;
 }
 
 public sealed class KitSuggestion

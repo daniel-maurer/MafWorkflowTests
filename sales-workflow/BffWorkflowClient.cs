@@ -486,11 +486,17 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await _parent.PublishMessageAsync(_sessionId, _parent.CreateSystemMessage(text, systemStyle, audience));
         }
 
-        public async Task<string> GetUserResponseAsync(string prompt, string? agentId = null, IReadOnlyList<AgentToolCall>? tools = null, string audience = MessageAudience.Both, CancellationToken cancellationToken = default)
+        public async Task<string> GetUserResponseAsync(
+            string prompt,
+            string? agentId = null,
+            IReadOnlyList<AgentToolCall>? tools = null,
+            string audience = MessageAudience.Both,
+            IReadOnlyList<MafImagePayload>? images = null,
+            CancellationToken cancellationToken = default)
         {
             if (!string.IsNullOrWhiteSpace(prompt))
             {
-                await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience));
+                await _parent.PublishMessageAsync(_sessionId, _parent.CreateAgentMessage(prompt, agentId, tools, audience, images));
             }
 
             return await _incomingMessages.Reader.ReadAsync(cancellationToken);

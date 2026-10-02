@@ -59,27 +59,12 @@ Responda SEMPRE no esquema JSON de FollowUpResult.";
 
         await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
         await _userInteractor.PublishAgentStateAsync("follow-up", "done", "Done", cancellationToken);
+
+        // Follow-up é um processo interno de retaguarda: registrado em um único trace, sem envio de mensagem no chat.
         await _userInteractor.PublishTraceAsync(
-            $"Follow-up comercial programado: tipo {followUpResult.FollowUpType} via {followUpResult.Channel} em {followUpResult.ScheduledAt:dd/MM HH:mm}.",
+            $"[ScheduleFollowUp] Retorno comercial agendado para {followUpResult.ScheduledAt:dd/MM/yyyy HH:mm} via {followUpResult.Channel} (tipo: {followUpResult.FollowUpType}).",
             "info",
             cancellationToken);
-
-        var tools = new List<AgentToolCall>
-        {
-            new AgentToolCall
-            {
-                Name = "ScheduleFollowUp",
-                Args = $"type: {followUpResult.FollowUpType}, channel: {followUpResult.Channel}",
-                Ok = followUpResult.FollowUpScheduled
-            }
-        };
-
-        await _userInteractor.SendUserResponseAsync(
-            followUpResult.MessageForUser,
-            "follow-up",
-            tools: tools,
-            audience: MessageAudience.Both,
-            cancellationToken: cancellationToken);
 
         await context.YieldOutputAsync(followUpResult, cancellationToken);
         return followUpResult;

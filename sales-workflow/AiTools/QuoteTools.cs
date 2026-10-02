@@ -93,6 +93,7 @@ public static class QuoteTools
                 var discountAmount = Math.Round(existing.Subtotal * (discountPercent / 100m), 2);
                 existing.Discount = discountAmount;
                 existing.Total = Math.Max(0, existing.Subtotal - discountAmount);
+                existing.PaymentConditions = $"Pix à vista com 5% adicional (R$ {existing.Total * 0.95m:N2}) ou até 10x sem juros no cartão.";
                 existing.MessageForUser = $"Desconto especial de {discountPercent}% aplicado! Novo total: R$ {existing.Total:N2}.";
                 return existing;
             }
