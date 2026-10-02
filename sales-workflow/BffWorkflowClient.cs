@@ -150,7 +150,21 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         if (!_sessions.TryGetValue(command.SessionId, out var session))
         {
-            // Esta sessão pertence a outro workflow/worker em execução
+            Logger.LogInfo($"[SessionRecovery] Sessão {command.SessionId} não encontrada em memória (reconexão ou worker reiniciado). Inicializando sessão sob demanda...");
+            session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id, "sales-assistant"));
+            await session.StartAsync(command.Text);
+
+            await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
+            await PublishTraceAsync(command.SessionId, "Fluxo comercial MAF iniciado sob demanda.");
+            await PublishAgentStateAsync(command.SessionId, "intent", "active", "Running");
+            await PublishContextAsync(command.SessionId, new MafContextPayload
+            {
+                Status = "analyzing-intent",
+                ChatTitle = "Sales Assistant",
+                ChatSubtitle = "Identificando intenção e catálogo...",
+                ActiveAgentId = "intent",
+                HumanMode = false
+            });
             return;
         }
 
@@ -200,7 +214,9 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     {
         if (!_sessions.TryGetValue(command.SessionId, out var session))
         {
-            Logger.LogWarning($"Received runScenario for unknown session {command.SessionId}.");
+            Logger.LogInfo($"[SessionRecovery] Sessão {command.SessionId} recuperada para runScenario.");
+            session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id, "sales-assistant"));
+            await session.StartAsync(command.ScenarioId);
             return;
         }
 

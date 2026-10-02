@@ -27,10 +27,22 @@ public sealed class SalesAdviceResult
 
     [JsonPropertyName("discount_percent")]
     public decimal DiscountPercent { get; set; }
+
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; set; } = string.Empty;
+
+    [JsonPropertyName("new_search_query")]
+    public string? NewSearchQuery { get; set; }
 }
 
 public sealed class CustomerChoiceEvaluation
 {
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; set; } = "checkout"; // "checkout", "search_more", "decline"
+
+    [JsonPropertyName("new_search_query")]
+    public string? NewSearchQuery { get; set; }
+
     [JsonPropertyName("wants_quote")]
     public bool WantsQuote { get; set; }
 

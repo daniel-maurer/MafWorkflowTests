@@ -54,4 +54,7 @@ public sealed class PatientData
 
     [JsonPropertyName("missing_fields")]
     public List<string> MissingFields { get; set; } = new();
+
+    [JsonPropertyName("question_for_tutor")]
+    public string? QuestionForTutor { get; set; }
 }

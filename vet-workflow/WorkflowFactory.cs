@@ -80,5 +80,5 @@ public static class WorkflowFactory
         res => res is VetWorkflowContext ctx && !IsSchedulingTheme(ctx.Triage.Theme) && ctx.Triage.Theme != "orientação_pós_consulta";
 
     private static bool IsSchedulingTheme(string theme) =>
-        theme is "vacina" or "retorno" or "exame" or "vermifugação" or "castração";
+        theme is "vacina" or "retorno" or "exame" or "vermifugação" or "castração" or "consulta" or "agendamento";
 }

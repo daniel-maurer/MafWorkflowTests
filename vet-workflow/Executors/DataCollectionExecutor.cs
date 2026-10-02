@@ -6,7 +6,7 @@ using Microsoft.Extensions.AI;
 namespace VetWorkflow;
 
 /// <summary>
-/// Executor responsável por coletar e estruturar as informações essenciais do paciente e tutor.
+/// Executor responsável por coletar e estruturar as informações essenciais do paciente e tutor de forma conversacional.
 /// </summary>
 internal sealed class DataCollectionExecutor : Executor<VetWorkflowContext, VetWorkflowContext>
 {
@@ -23,47 +23,77 @@ internal sealed class DataCollectionExecutor : Executor<VetWorkflowContext, VetW
     {
         await _userInteractor.PublishAgentStateAsync("data-collector", "active", "Coletando Dados", cancellationToken);
         await _userInteractor.SetAgentTypingAsync("Organizando informações do paciente...", true, cancellationToken);
-        await _userInteractor.PublishTraceAsync("[Coleta] Extraindo dados preliminares do animal...", "info", cancellationToken);
+        await _userInteractor.PublishTraceAsync("[Coleta] Estruturando dados do animal a partir do relato...", "info", cancellationToken);
 
-        // Extração dos dados iniciais
         var history = new List<ChatMessage>
         {
-            new(ChatRole.User, $"Mensagem do tutor: \"{workflowContext.InitialUserMessage}\". Extraia os dados do animal e tutor no formato JSON: {{\"pet_name\": \"...\", \"species\": \"...\", \"breed\": \"...\", \"age\": \"...\", \"weight_kg\": 0.0, \"symptoms\": \"...\", \"current_medication\": \"...\", \"tutor_name\": \"...\"}}")
+            new(ChatRole.User, $"Relato e histórico da conversa com o tutor:\n\"{workflowContext.InitialUserMessage}\"\nTema identificado na triagem: {workflowContext.Triage.Theme}. Extraia e estruture os dados do animal e tutor.")
         };
 
-        var response = await _dataCollectorAgent.RunAsync(history, cancellationToken: cancellationToken);
-        PatientData patient = new PatientData();
+        const int MaxCollectionClarifications = 2;
+        int attempts = 0;
+        PatientData patient = new();
 
-        if (AgentResponseParser.TryDeserializeAgentResponse<PatientData>(response.Text, out var parsedPatient) && parsedPatient != null)
+        while (attempts <= MaxCollectionClarifications)
         {
-            patient = parsedPatient;
+            var response = await _dataCollectorAgent.RunAsync(history, cancellationToken: cancellationToken);
+
+            if (AgentResponseParser.TryDeserializeAgentResponse<PatientData>(response.Text, out var parsedPatient) && parsedPatient != null)
+            {
+                patient = parsedPatient;
+            }
+
+            // Se os dados essenciais (nome do animal e espécie) já foram fornecidos ou se o agente marcou como completo
+            bool hasEssentialData = !string.IsNullOrWhiteSpace(patient.PetName) && !string.IsNullOrWhiteSpace(patient.Species);
+
+            if (hasEssentialData || patient.IsComplete || attempts >= MaxCollectionClarifications)
+            {
+                break;
+            }
+
+            // Caso faltem dados fundamentais (ex: tutor não informou o nome do pet nem espécie)
+            await _userInteractor.SetAgentTypingAsync("Organizando informações do paciente...", false, cancellationToken);
+
+            string question = !string.IsNullOrWhiteSpace(patient.QuestionForTutor)
+                ? patient.QuestionForTutor
+                : "Para organizarmos a ficha do atendimento, você poderia me informar o nome do seu pet e se é cão ou gato?";
+
+            await _userInteractor.PublishTraceAsync("Solicitando dados cadastrais complementares do pet...", "info", cancellationToken);
+            history.Add(new ChatMessage(ChatRole.Assistant, question));
+
+            string tutorAnswer = await _userInteractor.GetUserResponseAsync(
+                question,
+                agentId: "data-collector",
+                audience: MessageAudience.Both,
+                cancellationToken: cancellationToken);
+
+            await _userInteractor.SetAgentTypingAsync("Organizando informações do paciente...", true, cancellationToken);
+            history.Add(new ChatMessage(ChatRole.User, tutorAnswer));
+            workflowContext.InitialUserMessage += "\n" + tutorAnswer;
+            attempts++;
         }
 
-        // Fallbacks heurísticos básicos caso o LLM não tenha extraído tudo
+        // Se após a interação ainda não houver nome informado, define fallback neutro
         if (string.IsNullOrWhiteSpace(patient.PetName))
         {
-            var msg = workflowContext.InitialUserMessage.ToLowerInvariant();
-            if (msg.Contains("luna")) patient.PetName = "Luna";
-            else if (msg.Contains("thor")) patient.PetName = "Thor";
-            else if (msg.Contains("mimi")) patient.PetName = "Mimi";
-            else if (msg.Contains("bob")) patient.PetName = "Bob";
-            else patient.PetName = "Paciente";
+            patient.PetName = "Pet";
         }
 
         if (string.IsNullOrWhiteSpace(patient.Species))
         {
-            var msg = workflowContext.InitialUserMessage.ToLowerInvariant();
-            if (msg.Contains("gata") || msg.Contains("gato") || msg.Contains("felin")) patient.Species = "gato";
-            else patient.Species = "cão";
+            patient.Species = "não especificada";
         }
 
-        patient.Symptoms = workflowContext.InitialUserMessage;
-        patient.IsComplete = true;
+        if (string.IsNullOrWhiteSpace(patient.Symptoms))
+        {
+            patient.Symptoms = workflowContext.InitialUserMessage;
+        }
 
+        patient.IsComplete = true;
         workflowContext.Patient = patient;
 
         await _userInteractor.SetAgentTypingAsync("Organizando informações do paciente...", false, cancellationToken);
-        await _userInteractor.PublishTraceAsync($"[Ficha Preliminar] Animal: {patient.PetName} ({patient.Species}) | Sintoma/Motivo: {workflowContext.Triage.Theme}", "success", cancellationToken);
+        await _userInteractor.PublishTraceAsync($"[Ficha Preliminar] Animal: {patient.PetName} ({patient.Species}) | Motivo: {workflowContext.Triage.Theme}", "success", cancellationToken);
         await _userInteractor.PublishAgentStateAsync("data-collector", "done", "Dados Coletados", cancellationToken);
 
         await context.YieldOutputAsync(workflowContext, cancellationToken);

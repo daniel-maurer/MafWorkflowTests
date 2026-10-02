@@ -34,16 +34,31 @@ internal sealed class QuoteExecutor : Executor<SalesAdviceResult, QuoteResult>
             false,
             cancellationToken);
 
-        var skus = adviceResult.SelectedProducts.Select(p => p.Sku).ToList();
+        var cart = await context.ReadStateAsync<List<ProductInfo>>(Constants.CartItemsKey, Constants.SalesStateScope) ?? [];
+        var allProductsToQuote = cart.ToList();
+        foreach (var p in adviceResult.SelectedProducts)
+        {
+            if (!allProductsToQuote.Any(existing => string.Equals(existing.Sku, p.Sku, StringComparison.OrdinalIgnoreCase)))
+            {
+                allProductsToQuote.Add(p);
+            }
+        }
+
+        if (allProductsToQuote.Count == 0)
+        {
+            allProductsToQuote = adviceResult.SelectedProducts;
+        }
+
+        var skus = allProductsToQuote.Select(p => p.Sku).ToList();
         var kitInfo = !string.IsNullOrWhiteSpace(adviceResult.AcceptedKitName)
             ? $"Pacote/Combo Aceito: {adviceResult.AcceptedKitName} com {adviceResult.DiscountPercent}% de desconto comercial."
-            : "Orçamento padrão para os produtos selecionados.";
+            : "Orçamento com os produtos selecionados pelo cliente.";
 
         var prompt = $@"INFORMAÇÕES DA NEGOCIAÇÃO:
 {kitInfo}
 
 PRODUTOS SELECIONADOS PELO CLIENTE (orçar EXATAMENTE estes itens, NÃO inclua nenhum outro item):
-{JsonSerializer.Serialize(adviceResult.SelectedProducts.Select(p => new { p.Sku, p.Name, p.Price }))}
+{JsonSerializer.Serialize(allProductsToQuote.Select(p => new { p.Sku, p.Name, p.Price }))}
 
 INSTRUÇÕES ESTRITAS:
 1. Chame GenerateQuote com a lista de SKUs: {JsonSerializer.Serialize(skus)} e quantidades (1 para cada item).
@@ -54,7 +69,7 @@ INSTRUÇÕES ESTRITAS:
         if (!AgentResponseParser.TryDeserializeAgentResponse(response.Text, out QuoteResult? quoteResult) || quoteResult is null)
         {
             Logger.LogWarning("[QuoteExecutor] Falha na desserialização de QuoteResult, montando orçamento padrão.");
-            var subtotal = adviceResult.SelectedProducts.Sum(p => p.Price);
+            var subtotal = allProductsToQuote.Sum(p => p.Price);
             var discount = adviceResult.DiscountPercent > 0
                 ? Math.Round(subtotal * (adviceResult.DiscountPercent / 100m), 2)
                 : 0m;
@@ -71,7 +86,7 @@ INSTRUÇÕES ESTRITAS:
                 ValidUntil = DateTimeOffset.UtcNow.AddDays(7),
                 PaymentConditions = $"Pix à vista com 5% adicional (R$ {total * 0.95m:N2}) ou até 10x sem juros no cartão.",
                 MessageForUser = $"Orçamento {quoteId} gerado com sucesso! Total: R$ {total:N2} com validade de 7 dias.",
-                Items = adviceResult.SelectedProducts.Select(p => new QuoteItem
+                Items = allProductsToQuote.Select(p => new QuoteItem
                 {
                     Sku = p.Sku,
                     Name = p.Name,
@@ -84,11 +99,11 @@ INSTRUÇÕES ESTRITAS:
         else
         {
             // Garante consistência rigorosa dos itens com os produtos aceitos pelo cliente
-            var approvedSkus = adviceResult.SelectedProducts.Select(p => p.Sku).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (quoteResult.Items == null || quoteResult.Items.Count == 0 || quoteResult.Items.Any(i => !approvedSkus.Contains(i.Sku)) || quoteResult.Items.Count != adviceResult.SelectedProducts.Count)
+            var approvedSkus = allProductsToQuote.Select(p => p.Sku).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (quoteResult.Items == null || quoteResult.Items.Count == 0 || quoteResult.Items.Any(i => !approvedSkus.Contains(i.Sku)) || quoteResult.Items.Count != allProductsToQuote.Count)
             {
                 Logger.LogInfo("[QuoteExecutor] Ajustando itens do orçamento para refletir fielmente a seleção do cliente.");
-                quoteResult.Items = adviceResult.SelectedProducts.Select(p => new QuoteItem
+                quoteResult.Items = allProductsToQuote.Select(p => new QuoteItem
                 {
                     Sku = p.Sku,
                     Name = p.Name,

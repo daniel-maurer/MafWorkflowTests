@@ -28,6 +28,7 @@ REGRAS OBRIGATÓRIAS:
 2. Se a mensagem for muito vaga (ex: 'oi', 'ajuda'), preencha is_understood = false e elabore question_for_user com uma pergunta objetiva e cordial.
 3. Se a intenção for 'complaint', 'negotiation' ou 'exchange_return', marque SEMPRE requires_human = true.
 4. Identifique o sentimento: 'positive', 'neutral', 'frustrated' ou 'angry'.
+5. Em conversas com adição de produtos (ex: 'além da camisa quero um mouse', 'quero também um mouse', 'tem tênis?'), extraia SEMPRE o NOVO produto ou item desejado como 'extracted_product_query' (ex: 'mouse'), e defina intent = 'product_search'.
 
 Responda SEMPRE estritamente no esquema JSON de IntentResult.",
             name: "IntentAgent")
