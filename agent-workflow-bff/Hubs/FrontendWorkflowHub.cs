@@ -82,9 +82,9 @@ public sealed class FrontendWorkflowHub(
         return maf.MarkSolvedAsync(new MafSessionCommand(sessionId), Context.ConnectionAborted);
     }
 
-    public Task ResetSession(string sessionId)
+    public Task ResetSession(string sessionId, string? customerId = null, string? customerData = null)
     {
-        logger.LogInformation("SignalR received ResetSession from ConnectionId={ConnectionId} User={User} SessionId={SessionId}", Context.ConnectionId, Context.User?.Identity?.Name, sessionId);
-        return maf.ResetWorkflowAsync(new MafSessionCommand(sessionId), Context.ConnectionAborted);
+        logger.LogInformation("SignalR received ResetSession from ConnectionId={ConnectionId} User={User} SessionId={SessionId} CustomerId={CustomerId}", Context.ConnectionId, Context.User?.Identity?.Name, sessionId, customerId);
+        return maf.ResetWorkflowAsync(new MafSessionCommand(sessionId, customerId, customerData), Context.ConnectionAborted);
     }
 }

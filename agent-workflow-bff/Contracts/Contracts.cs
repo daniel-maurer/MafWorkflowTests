@@ -37,7 +37,14 @@ public sealed record ScenarioDefinitionDto(
 
 public sealed record WorkflowCapabilitiesDto(bool HumanHandoff, bool KnowledgeBase, bool Tracing);
 
-public sealed record CreateWorkflowSessionRequest(string WorkflowId, string? InitialMessage);
+public sealed record CreateWorkflowSessionRequest(
+    string WorkflowId,
+    string? InitialMessage = null,
+    string? CustomerId = null,
+    string? CustomerData = null);
+public sealed record ResetWorkflowSessionRequest(
+    string? CustomerId = null,
+    string? CustomerData = null);
 public sealed record CreateWorkflowSessionResponse(string SessionId, string TicketId);
 
 public sealed record SessionSnapshotDto(
@@ -110,12 +117,17 @@ public sealed record MafStartWorkflowCommand(
     string? InitialMessage,
     string MafWorkflowName,
     string MafWorkflowVersion,
-    string InputSchema);
+    string InputSchema,
+    string? CustomerId = null,
+    string? CustomerData = null);
 
 public sealed record MafUserMessageCommand(string SessionId, string Text);
 public sealed record MafHumanMessageCommand(string SessionId, string Text);
 public sealed record MafRunScenarioCommand(string SessionId, string ScenarioId);
-public sealed record MafSessionCommand(string SessionId);
+public sealed record MafSessionCommand(
+    string SessionId,
+    string? CustomerId = null,
+    string? CustomerData = null);
 
 /// <summary>
 /// Slim trace event sent by the backend (semantic only, no presentation).

@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AuthProvider, useAuth } from '@/auth/AuthContext';
-import { RequireAuth } from '@/components/RequireAuth';
-import { LoginPage } from '@/pages/LoginPage';
+import {
+  AuthProvider,
+  useAuth,
+  RequireAuth,
+  LoginPage,
+  WorkflowRunPage,
+  setTokenProvider,
+} from '@maf/shared-admin-app';
 import { WorkflowsPage } from '@/pages/WorkflowsPage';
-import { WorkflowRunPage } from '@/pages/WorkflowRunPage';
-import { setTokenProvider } from '@/services/apiClient';
 
 function TokenWire() {
   const auth = useAuth();

@@ -1,0 +1,17 @@
+{
+  "name": "maf-monorepo",
+  "private": true,
+  "workspaces": [
+    "shared/shared-admin-app",
+    "agent-workflow-app",
+    "sales-workflow/admin/frontend"
+  ],
+  "scripts": {
+    "dev:app": "npm run dev --workspace=agent-workflow-app",
+    "dev:sales-admin": "npm run dev --workspace=sales-workflow/admin/frontend",
+    "build:all": "npm run build --workspaces"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4"
+  }
+}

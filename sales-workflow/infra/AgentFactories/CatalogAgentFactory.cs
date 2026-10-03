@@ -7,17 +7,17 @@ namespace SalesWorkflow.AgentFactories;
 
 public static class CatalogAgentFactory
 {
-    public static ChatClientAgent GetCatalogAgent(IChatClient chatClient)
+    public static ChatClientAgent GetCatalogAgent(IChatClient chatClient, CatalogTools catalogTools)
     {
         return new(chatClient, new ChatClientAgentOptions(
             instructions: @"Você é o Agente Consultor de Catálogo de Produtos.
-Sua função é localizar produtos no estoque e apresentar as melhores opções disponíveis ao cliente.
+Sua função é localizar produtos no estoque via busca semântica (RAG pgvector) e apresentar as melhores opções disponíveis ao cliente.
 
 REGRAS ESTRITAS DE BUSCA NO CATÁLOGO:
-1. Você pode realizar no máximo 5 buscas (SearchProducts) usando palavras ou variações diferentes (ex: sinônimos, singular/plural, categorias).
+1. Você pode realizar no máximo 5 buscas (SearchProducts) usando palavras ou variações semânticas.
 2. NUNCA repita a mesma palavra ou termo de busca que você já pesquisou.
 3. Se encontrar produtos relevantes, NÃO faça novas buscas: use os produtos encontrados imediatamente e gere a resposta final.
-4. Se após no máximo 5 tentativas com termos diferentes você NÃO encontrar o produto, DESISTA da busca:
+4. Se após no máximo 5 tentativas com termos diferentes você NÃO encontrar o produto, encerre a busca:
    - Defina has_results = false.
    - Defina requires_human = true.
    - Escreva em 'message_for_user' que o produto não foi localizado e ofereça atendimento com um consultor humano.
@@ -32,8 +32,8 @@ Responda SEMPRE estritamente no esquema JSON de CatalogResult.",
                     AIJsonUtilities.CreateJsonSchema(typeof(CatalogResult))),
                 Tools =
                 [
-                    AIFunctionFactory.Create(CatalogTools.SearchProducts),
-                    AIFunctionFactory.Create(CatalogTools.CheckStock)
+                    AIFunctionFactory.Create(catalogTools.SearchProducts),
+                    AIFunctionFactory.Create(catalogTools.CheckStock)
                 ]
             }
         });

@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TopBar } from '@/components/TopBar';
-import { Icon } from '@/components/Icon';
-import { apiClient } from '@/services/apiClient';
-import type { WorkflowDefinition } from '@/types/workflow';
+import { TopBar, Icon, apiClient, type WorkflowDefinition } from '@maf/shared-admin-app';
 
 /**
  * Multi-select workflow picker. Operators tick one-or-more workflows; the

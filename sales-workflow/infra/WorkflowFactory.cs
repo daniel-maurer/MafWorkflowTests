@@ -1,32 +1,44 @@
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using SalesWorkflow.AgentFactories;
+using SalesWorkflow.AiTools;
 using SalesWorkflow.Executors;
 using SalesWorkflow.Models;
+using SalesWorkflow.Services;
 
 namespace SalesWorkflow;
 
 public static class WorkflowFactory
 {
-    internal static Workflow BuildSalesWorkflow(IChatClient chatClient, IUserInteractor interactor)
+    internal static Workflow BuildSalesWorkflow(
+        IChatClient chatClient,
+        IUserInteractor interactor,
+        SalesAdminClient salesAdminClient)
     {
         RequestPort userMessagePort = RequestPort.Create<string, string>("UserMessage");
 
+        // === Tools de Instância ===
+        var catalogTools = new CatalogTools(salesAdminClient);
+        var quoteTools = new QuoteTools(salesAdminClient);
+        var cartTools = new CartTools(salesAdminClient);
+        FollowUpTools.AdminClient = salesAdminClient;
+        FollowUpTools.Interactor = interactor as ISalesUserInteractor;
+
         // === Agentes ===
         var intentAgent = IntentAgentFactory.GetIntentAgent(chatClient);
-        var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient);
-        var salesAdvisorAgent = SalesAdvisorAgentFactory.GetSalesAdvisorAgent(chatClient);
+        var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient, catalogTools);
+        var salesAdvisorAgent = SalesAdvisorAgentFactory.GetSalesAdvisorAgent(chatClient, catalogTools);
         var decisionAgent = SalesAdvisorAgentFactory.GetCustomerDecisionAgent(chatClient);
-        var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient);
-        var followUpAgent = FollowUpAgentFactory.GetFollowUpAgent(chatClient);
+        var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient, quoteTools);
+        var followUpAgent = FollowUpAgentFactory.GetFollowUpAgent(chatClient, cartTools);
         var salesRecordAgent = SalesRecordAgentFactory.GetSalesRecordAgent(chatClient);
 
         // === Executores ===
-        var intentExecutor = new IntentExecutor(intentAgent, interactor);
-        var catalogExecutor = new CatalogExecutor(catalogAgent, interactor);
-        var salesAdvisorExecutor = new SalesAdvisorExecutor(salesAdvisorAgent, decisionAgent, interactor);
+        var intentExecutor = new IntentExecutor(intentAgent, interactor, salesAdminClient);
+        var catalogExecutor = new CatalogExecutor(catalogAgent, interactor, catalogTools);
+        var salesAdvisorExecutor = new SalesAdvisorExecutor(salesAdvisorAgent, decisionAgent, interactor, salesAdminClient, catalogTools);
         var loopSearchAdapter = new LoopSearchAdapterExecutor(interactor);
-        var quoteExecutor = new QuoteExecutor(quoteAgent, interactor);
+        var quoteExecutor = new QuoteExecutor(quoteAgent, interactor, salesAdminClient);
         var followUpExecutor = new FollowUpExecutor(followUpAgent, interactor);
         var humanSellerExecutor = new HumanSellerExecutor(interactor);
         var salesRecordExecutor = new SalesRecordExecutor(salesRecordAgent, interactor);

@@ -89,6 +89,9 @@ function reducer(state: State, action: Action): State {
       const ev = action.ev;
       switch (ev.type) {
         case 'message': {
+          if (ev.message.text?.startsWith('__START_')) {
+            return state;
+          }
           if (state.messages.some((m) => m.id === ev.message.id)) {
             return state;
           }

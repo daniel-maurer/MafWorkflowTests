@@ -4,6 +4,7 @@ using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using SalesWorkflow.AiTools;
 using SalesWorkflow.Models;
+using SalesWorkflow.Services;
 
 namespace SalesWorkflow.Executors;
 
@@ -12,15 +13,21 @@ internal sealed class SalesAdvisorExecutor : Executor<CatalogResult, SalesAdvice
     private readonly AIAgent _salesAdvisorAgent;
     private readonly AIAgent _decisionAgent;
     private readonly IUserInteractor _userInteractor;
+    private readonly SalesAdminClient _salesAdminClient;
+    private readonly CatalogTools _catalogTools;
 
     public SalesAdvisorExecutor(
         AIAgent salesAdvisorAgent,
         AIAgent decisionAgent,
-        IUserInteractor userInteractor) : base("SalesAdvisorExecutor")
+        IUserInteractor userInteractor,
+        SalesAdminClient salesAdminClient,
+        CatalogTools catalogTools) : base("SalesAdvisorExecutor")
     {
         _salesAdvisorAgent = salesAdvisorAgent;
         _decisionAgent = decisionAgent;
         _userInteractor = userInteractor;
+        _salesAdminClient = salesAdminClient;
+        _catalogTools = catalogTools;
     }
 
     public override async ValueTask<SalesAdviceResult> HandleAsync(
@@ -40,14 +47,14 @@ internal sealed class SalesAdvisorExecutor : Executor<CatalogResult, SalesAdvice
             false,
             cancellationToken);
 
-        var allCatalog = CatalogTools.LoadCatalog();
+        // 1. Busca complementos reais via API (produtos compatíveis cadastrados ou busca semântica)
         var candidateComplements = new List<ProductInfo>();
 
         foreach (var prod in catalogResult.Products)
         {
             if (prod.CompatibleSkus != null && prod.CompatibleSkus.Count > 0)
             {
-                var matches = allCatalog.Where(p => prod.CompatibleSkus.Contains(p.Sku, StringComparer.OrdinalIgnoreCase));
+                var matches = await _salesAdminClient.GetProductsBySkusAsync(prod.CompatibleSkus, cancellationToken);
                 candidateComplements.AddRange(matches);
             }
         }
@@ -55,30 +62,25 @@ internal sealed class SalesAdvisorExecutor : Executor<CatalogResult, SalesAdvice
         if (candidateComplements.Count == 0 && catalogResult.Products.Count > 0)
         {
             var mainProd = catalogResult.Products[0];
-            var fallbacks = allCatalog.Where(p => !string.Equals(p.Sku, mainProd.Sku, StringComparison.OrdinalIgnoreCase)).Take(2);
-            candidateComplements.AddRange(fallbacks);
+            var term = $"{mainProd.Category} {mainProd.Brand}".Trim();
+            if (string.IsNullOrWhiteSpace(term)) term = "acessórios complementares";
+            var fallbacks = await _salesAdminClient.SearchProductsSemanticAsync(term, top: 3, cancellationToken);
+            candidateComplements.AddRange(fallbacks.Where(p => !string.Equals(p.Sku, mainProd.Sku, StringComparison.OrdinalIgnoreCase)).Take(2));
         }
 
-        candidateComplements = candidateComplements.DistinctBy(p => p.Sku).ToList();
+        var prompt = $@"Os seguintes produtos principais foram identificados no catálogo:
+{JsonSerializer.Serialize(catalogResult.Products)}
 
-        var cart = await context.ReadStateAsync<List<ProductInfo>>(Constants.CartItemsKey, Constants.SalesStateScope) ?? [];
-        var cartContext = cart.Count > 0
-            ? $"\nItens já selecionados e adicionados ao carrinho pelo cliente anteriormente:\n{JsonSerializer.Serialize(cart.Select(p => new { p.Sku, p.Name, p.Price }))}\n"
-            : string.Empty;
+Opções de complementos e acessórios compatíveis disponíveis:
+{JsonSerializer.Serialize(candidateComplements)}
 
-        var prompt = $@"Produtos recém-localizados no catálogo para esta etapa:
-{JsonSerializer.Serialize(catalogResult.Products.Select(p => new { p.Sku, p.Name, p.Price }))}
-{cartContext}
-Opções de complementos e acessórios disponíveis no estoque:
-{JsonSerializer.Serialize(candidateComplements.Select(p => new { p.Sku, p.Name, p.Price }))}
-
-INSTRUÇÕES DO CONSULTOR DE VENDAS:
-1. O FOCO PRINCIPAL da sua mensagem deve ser o produto recém-localizado pelo catálogo: {string.Join(", ", catalogResult.Products.Select(p => p.Name))}.
-2. Apresente cordialmente o novo produto localizado.
-3. Se houver complementos pertinentes ou se o cliente já tiver itens no carrinho, você pode sugerir kits ou combos especiais combinando-os com desconto.
-4. OBRIGATÓRIO: Use SEMPRE CalculateKitPrice para calcular os preços de qualquer kit ou combo com desconto. NUNCA faça contas de cabeça.
-5. Em 'message_for_user', pergunte se o cliente gostaria que fosse gerado o orçamento formal com condições de pagamento.
-Responda SEMPRE no esquema JSON de SalesAdviceResult.";
+INSTRUÇÕES:
+1. Monte sugestões pertinentes de complementos.
+2. Monte de 1 a 2 opções de kits/combos atrativos com desconto especial (ex: 10% no combo).
+3. OBRIGATÓRIO: Use CalculateKitPrice para calcular os preços exatos dos kits com desconto. NUNCA calcule de cabeça.
+4. Apresente os kits com preços exatos e pergunte se o cliente deseja fechar o combo ou gerar um orçamento formal.
+5. Defina customer_wants_quote = false por enquanto.
+Responda SEMPRE estritamente no esquema JSON de SalesAdviceResult.";
 
         var response = await _salesAdvisorAgent.RunAsync(prompt, cancellationToken: cancellationToken);
 
@@ -87,22 +89,18 @@ Responda SEMPRE no esquema JSON de SalesAdviceResult.";
             Logger.LogWarning("[SalesAdvisorExecutor] Falha na desserialização de SalesAdviceResult.");
             adviceResult = new SalesAdviceResult
             {
-                MessageForUser = "Gostaria que eu montasse um orçamento formal com condições de pagamento?",
+                SuggestedComplements = candidateComplements,
                 CustomerWantsQuote = false,
-                SelectedProducts = catalogResult.Products
+                MessageForUser = "Gostaria de adicionar algum complemento ao seu pedido com condições especiais?"
             };
-        }
-        else
-        {
-            adviceResult.CustomerWantsQuote = false;
         }
 
         adviceResult.SelectedProducts = catalogResult.Products;
 
-        // Garante cálculos exatos e coerentes para cada kit sugerido
+        // Garante cálculos exatos e coerentes para cada kit sugerido com base nos preços reais
         foreach (var kit in adviceResult.SuggestedKits)
         {
-            var calc = CatalogTools.CalculateKitPrice(kit.ProductSkus, kit.DiscountPct > 0 ? kit.DiscountPct : 10m);
+            var calc = await _catalogTools.CalculateKitPrice(kit.ProductSkus, kit.DiscountPct > 0 ? kit.DiscountPct : 10m, cancellationToken);
             kit.OriginalPrice = calc.OriginalPrice;
             kit.KitPrice = calc.FinalPrice;
             kit.DiscountPct = calc.DiscountPercent;
@@ -128,68 +126,48 @@ Responda SEMPRE no esquema JSON de SalesAdviceResult.";
             tools.Add(new AgentToolCall { Name = "GetCompatibleProducts", Args = $"{complementsCount} itens", Ok = true });
         }
 
-        var complementImages = adviceResult.SuggestedComplements
-            .Where(p => !string.IsNullOrWhiteSpace(p.ImageUrl))
-            .Select(p => new MafImagePayload
+        var advisorImages = new List<MafImagePayload>();
+        foreach (var kit in adviceResult.SuggestedKits)
+        {
+            var kitProds = await _salesAdminClient.GetProductsBySkusAsync(kit.ProductSkus, cancellationToken);
+            foreach (var kp in kitProds.Where(p => !string.IsNullOrWhiteSpace(p.ImageUrl)))
             {
-                Url = p.ImageUrl,
-                Alt = p.Name,
-                Sku = p.Sku
-            }).ToList();
+                if (!advisorImages.Any(img => img.Sku == kp.Sku))
+                {
+                    advisorImages.Add(new MafImagePayload { Url = kp.ImageUrl, Alt = kp.Name, Sku = kp.Sku });
+                }
+            }
+        }
 
-        var promptText = string.IsNullOrWhiteSpace(adviceResult.MessageForUser)
-            ? "Gostaria que eu montasse um orçamento formal com condições de pagamento?"
-            : adviceResult.MessageForUser;
-
-        // Aguarda a resposta do usuário antes de prosseguir para orçamento
-        string userDecision = await _userInteractor.GetUserResponseAsync(
-            promptText,
+        var customerAnswer = await _userInteractor.GetUserResponseAsync(
+            adviceResult.MessageForUser,
             "sales-advisor",
-            tools: tools,
+            tools: tools.Count > 0 ? tools : null,
             audience: MessageAudience.Both,
-            images: complementImages.Count > 0 ? complementImages : null,
+            images: advisorImages.Count > 0 ? advisorImages : null,
             cancellationToken: cancellationToken);
 
-        Logger.LogInfo($"[SalesAdvisorExecutor] Resposta do cliente: '{userDecision}'");
+        await _userInteractor.PublishAgentStateAsync("sales-advisor", "done", "Done", cancellationToken);
+        await _userInteractor.SetAgentTypingAsync("Analisando sua resposta...", true, cancellationToken);
 
-        await _userInteractor.SetAgentTypingAsync("Interpretando sua escolha e calculando a melhor proposta...", true, cancellationToken);
+        var decisionPrompt = $@"O consultor de vendas apresentou a seguinte proposta ao cliente:
+Mensagem do consultor: '{adviceResult.MessageForUser}'
+Produtos principais originais: {JsonSerializer.Serialize(catalogResult.Products.Select(p => new { p.Sku, p.Name, p.Price }))}
+Kits sugeridos: {JsonSerializer.Serialize(adviceResult.SuggestedKits)}
+Complementos sugeridos: {JsonSerializer.Serialize(adviceResult.SuggestedComplements.Select(p => new { p.Sku, p.Name, p.Price }))}
 
-        var decisionPrompt = $@"Você é o consultor de vendas avaliando a resposta do cliente após a oferta comercial.
+Resposta do cliente: '{customerAnswer}'
 
-CONTEXTO DA NEGOCIAÇÃO:
-- Produtos buscados no catálogo nesta rodada:
-{JsonSerializer.Serialize(catalogResult.Products.Select(p => new { p.Sku, p.Name, p.Price }))}
-{cartContext}
-- Kits / Combos sugeridos pelo consultor:
-{JsonSerializer.Serialize(adviceResult.SuggestedKits.Select(k => new { k.Name, k.ProductSkus, k.KitPrice, k.OriginalPrice, k.DiscountPct }))}
-
-- Complementos / Acessórios sugeridos:
-{JsonSerializer.Serialize(adviceResult.SuggestedComplements.Select(p => new { p.Sku, p.Name, p.Price }))}
-
-- Proposta apresentada ao cliente:
-""{promptText}""
-
-RESPOSTA DO CLIENTE:
-""{userDecision}""
-
-SUA TAREFA:
-Interprete a intenção e a decisão do cliente em linguagem natural:
-1. 'next_action': 
-   - 'search_more': se o cliente quiser buscar, ver ou adicionar outro produto (ex: 'além da camisa quero um mouse', 'quero também um mouse', 'vcs tem tênis?', 'gostaria de outro item').
-   - 'checkout': se o cliente concordar com a proposta, kit ou quiser fechar o orçamento com os itens atuais (ex: 'sim', 'aceito', 'pode mandar', 'só a camisa', 'fechar orçamento').
-   - 'decline': se o cliente recusar expressamente ou cancelar (ex: 'não quero', 'cancela', 'deixa pra lá').
-2. 'new_search_query': se next_action for 'search_more', extraia o termo ou descrição exata do novo produto a ser pesquisado (ex: 'mouse'). Se for checkout ou decline, deixe null.
-3. 'wants_quote': true se next_action for 'checkout'. false caso contrário.
-4. 'accepted_kit_name': nome exato do kit ou combo aceito, ou null.
-5. 'accepted_skus': lista de SKUs que o cliente aceitou levar ou manter nesta rodada (por exemplo, se ele disse 'além da camisa quero um mouse', ele aceitou a camisa, então inclua o SKU da camisa!).
-6. 'discount_percent': percentual de desconto comercial a conceder (se aceitou kit, o desconto do kit; se não, 0).
-7. 'wants_only_original': true se o cliente indicou preferência estritamente pelo produto original sem kits/acessórios.
-8. 'reason': breve explicação do seu entendimento da intenção do cliente.
-9. 'message_for_user': mensagem amigável para o cliente. Se next_action for 'search_more', confirme que vai buscar o novo produto (ex: 'Perfeito! Vou verificar as opções de mouse para você agora mesmo.').
-
-Responda SEMPRE estritamente no esquema JSON de CustomerChoiceEvaluation.";
+Classifique a intenção e ação a seguir ('next_action'):
+- 'search_more': se pediu para ver/adicionar outro produto.
+- 'checkout': se aceitou o kit, ou quis fechar com o que tem.
+- 'decline': se recusou.
+Responda estritamente no esquema JSON de CustomerChoiceEvaluation.";
 
         var decisionResponse = await _decisionAgent.RunAsync(decisionPrompt, cancellationToken: cancellationToken);
+        await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
+
+        var cart = await context.ReadStateAsync<List<ProductInfo>>(Constants.CartItemsKey, Constants.SalesStateScope) ?? [];
 
         if (AgentResponseParser.TryDeserializeAgentResponse(decisionResponse.Text, out CustomerChoiceEvaluation? evaluation) && evaluation is not null)
         {
@@ -204,9 +182,7 @@ Responda SEMPRE estritamente no esquema JSON de CustomerChoiceEvaluation.";
             adviceResult.CustomerWantsQuote = string.Equals(adviceResult.NextAction, "checkout", StringComparison.OrdinalIgnoreCase);
 
             var skusToInclude = evaluation.AcceptedSkus ?? [];
-            var roundProducts = allCatalog
-                .Where(p => skusToInclude.Contains(p.Sku, StringComparer.OrdinalIgnoreCase))
-                .ToList();
+            var roundProducts = await _salesAdminClient.GetProductsBySkusAsync(skusToInclude, cancellationToken);
 
             if (roundProducts.Count == 0 && (adviceResult.CustomerWantsQuote || string.Equals(adviceResult.NextAction, "search_more", StringComparison.OrdinalIgnoreCase)))
             {
@@ -231,82 +207,82 @@ Responda SEMPRE estritamente no esquema JSON de CustomerChoiceEvaluation.";
             }
             else
             {
-                await context.QueueStateUpdateAsync(Constants.CartItemsKey, cart, Constants.SalesStateScope);
-                adviceResult.SelectedProducts = cart;
-
-                if (string.Equals(adviceResult.NextAction, "search_more", StringComparison.OrdinalIgnoreCase))
+                adviceResult.SelectedProducts = cart.ToList();
+                if (!string.IsNullOrWhiteSpace(evaluation.MessageForUser))
                 {
-                    adviceResult.MessageForUser = !string.IsNullOrWhiteSpace(evaluation.MessageForUser)
-                        ? evaluation.MessageForUser
-                        : $"Perfeito! Vou verificar as opções de {adviceResult.NewSearchQuery} para você.";
+                    adviceResult.MessageForUser = evaluation.MessageForUser;
+                }
+            }
+
+            await _userInteractor.PublishTraceAsync(
+                $"Decisão do cliente: {adviceResult.NextAction} | Itens acumulados no carrinho: {cart.Count}",
+                string.Equals(adviceResult.NextAction, "decline", StringComparison.OrdinalIgnoreCase) ? "warning" : "success",
+                cancellationToken);
+        }
+        else
+        {
+            var lower = customerAnswer.ToLowerInvariant();
+            var wantsSearchMore = lower.Contains("além") || lower.Contains("também") || lower.Contains("outro") || lower.Contains("tem ") || lower.Contains("quero ver");
+
+            if (wantsSearchMore)
+            {
+                adviceResult.NextAction = "search_more";
+                adviceResult.CustomerWantsQuote = false;
+                adviceResult.NewSearchQuery = customerAnswer;
+                foreach (var p in catalogResult.Products)
+                {
+                    if (!cart.Any(existing => string.Equals(existing.Sku, p.Sku, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        cart.Add(p);
+                    }
+                }
+                adviceResult.SelectedProducts = cart.ToList();
+                adviceResult.MessageForUser = $"Entendido! Vou pesquisar: '{customerAnswer}'.";
+            }
+            else
+            {
+                var accepted = lower.Contains("sim") || lower.Contains("kit") || lower.Contains("aceito") || lower.Contains("combo") || lower.Contains("fechado") || lower.Contains("quero") || lower.Contains("pode ser");
+                adviceResult.NextAction = accepted ? "checkout" : "decline";
+                adviceResult.CustomerWantsQuote = accepted;
+
+                if (accepted)
+                {
+                    var bestKit = adviceResult.SuggestedKits.FirstOrDefault();
+                    if (bestKit is not null)
+                    {
+                        var kitProds = await _salesAdminClient.GetProductsBySkusAsync(bestKit.ProductSkus, cancellationToken);
+                        foreach (var p in kitProds)
+                        {
+                            if (!cart.Any(existing => string.Equals(existing.Sku, p.Sku, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                cart.Add(p);
+                            }
+                        }
+                        adviceResult.DiscountPercent = bestKit.DiscountPct;
+                        adviceResult.AcceptedKitName = bestKit.Name;
+                    }
+                    else
+                    {
+                        foreach (var p in catalogResult.Products)
+                        {
+                            if (!cart.Any(existing => string.Equals(existing.Sku, p.Sku, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                cart.Add(p);
+                            }
+                        }
+                    }
+                    adviceResult.SelectedProducts = cart.ToList();
                 }
                 else
                 {
-                    adviceResult.MessageForUser = !string.IsNullOrWhiteSpace(evaluation.MessageForUser)
-                        ? evaluation.MessageForUser
-                        : "Excelente escolha! Vou preparar a sua proposta comercial agora mesmo.";
+                    adviceResult.SelectedProducts = [];
+                    adviceResult.MessageForUser = "Sem problemas! Fico à sua disposição caso mude de ideia ou precise de mais informações.";
                 }
             }
         }
-        else
-        {
-            Logger.LogWarning("[SalesAdvisorExecutor] Falha na desserialização de CustomerChoiceEvaluation, utilizando fallback padrão.");
-            adviceResult.NextAction = "checkout";
-            adviceResult.CustomerWantsQuote = true;
-            adviceResult.DiscountPercent = 0;
-            adviceResult.AcceptedKitName = null;
-            adviceResult.MessageForUser = "Perfeito! Vou preparar a sua proposta comercial agora mesmo.";
 
-            cart = await context.ReadStateAsync<List<ProductInfo>>(Constants.CartItemsKey, Constants.SalesStateScope) ?? cart;
-            foreach (var p in catalogResult.Products)
-            {
-                if (!cart.Any(existing => string.Equals(existing.Sku, p.Sku, StringComparison.OrdinalIgnoreCase)))
-                {
-                    cart.Add(p);
-                }
-            }
-            await context.QueueStateUpdateAsync(Constants.CartItemsKey, cart, Constants.SalesStateScope);
-            adviceResult.SelectedProducts = cart;
-        }
-
-        // Limpa complementos para evitar vazamento de itens não selecionados
-        adviceResult.SuggestedComplements.Clear();
-
-        await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
-        await _userInteractor.PublishAgentStateAsync("sales-advisor", "done", "Done", cancellationToken);
-
-        if (string.Equals(adviceResult.NextAction, "search_more", StringComparison.OrdinalIgnoreCase))
-        {
-            var cartNames = string.Join(", ", adviceResult.SelectedProducts.Select(p => p.Name));
-            await _userInteractor.PublishTraceAsync(
-                $"Cliente optou por adicionar mais itens. Novo termo: '{adviceResult.NewSearchQuery}'. Carrinho atual: {cartNames}",
-                "info",
-                cancellationToken);
-
-            await _userInteractor.SendUserResponseAsync(
-                adviceResult.MessageForUser,
-                "sales-advisor",
-                audience: MessageAudience.Both,
-                cancellationToken: cancellationToken);
-        }
-        else if (string.Equals(adviceResult.NextAction, "decline", StringComparison.OrdinalIgnoreCase))
-        {
-            await _userInteractor.PublishTraceAsync("Cliente optou por não gerar proposta/orçamento no momento.", "info", cancellationToken);
-            await _userInteractor.SendUserResponseAsync(
-                adviceResult.MessageForUser,
-                "sales-advisor",
-                audience: MessageAudience.Both,
-                cancellationToken: cancellationToken);
-        }
-        else
-        {
-            var itemNames = string.Join(", ", adviceResult.SelectedProducts.Select(p => p.Name));
-            await _userInteractor.PublishTraceAsync(
-                $"Cliente confirmou interesse na proposta. Pacote: {(adviceResult.AcceptedKitName ?? "Produto(s) selecionado(s)")} ({adviceResult.DiscountPercent}% desc). Itens no carrinho: {itemNames}",
-                "success",
-                cancellationToken);
-        }
-
+        await context.QueueStateUpdateAsync(Constants.CartItemsKey, cart, Constants.SalesStateScope);
+        await context.QueueStateUpdateAsync(Constants.FinalAdviceKey, adviceResult, Constants.SalesStateScope);
         await context.YieldOutputAsync(adviceResult, cancellationToken);
         return adviceResult;
     }

@@ -18,7 +18,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@maf/shared-admin-app": ["../shared/shared-admin-app/src/index.ts"]
     }
   },
   "include": ["src", "src/**/*.d.ts"]

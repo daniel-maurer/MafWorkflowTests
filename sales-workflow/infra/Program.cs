@@ -2,6 +2,7 @@ using DotNetEnv;
 using Azure.Identity;
 using Azure.AI.OpenAI;
 using Microsoft.Extensions.AI;
+using SalesWorkflow.Services;
 
 namespace SalesWorkflow;
 
@@ -22,10 +23,13 @@ public class Program
             var chatClient = new AzureOpenAIClient(endpoint, new AzureCliCredential())
                 .GetChatClient(deploymentName).AsIChatClient();
 
+            var salesAdminClient = new SalesAdminClient(configuration.SalesAdminBaseUrl);
+
             var bffClient = new BffWorkflowClient(
                 configuration,
                 chatClient,
-                interactor => WorkflowFactory.BuildSalesWorkflow(chatClient, interactor));
+                salesAdminClient,
+                interactor => WorkflowFactory.BuildSalesWorkflow(chatClient, interactor, salesAdminClient));
 
             await bffClient.StartAsync();
             Console.WriteLine($"[Sales Workflow Worker] Conectado ao BFF em {configuration.BffBaseUrl}");

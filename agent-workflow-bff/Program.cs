@@ -81,6 +81,11 @@ builder.Services.AddSingleton<ISessionRegistry, InMemorySessionRegistry>();
 builder.Services.AddSingleton<IFrontendEventPublisher, FrontendEventPublisher>();
 builder.Services.AddSingleton<IMafCommandPublisher, MafCommandPublisher>();
 
+builder.Services.AddHttpClient("SalesAdmin", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["SalesAdminApi:BaseUrl"] ?? "http://localhost:5100/api/");
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -141,7 +146,9 @@ api.MapPost("/workflow-sessions", async (
         request.InitialMessage,
         workflow.Maf.WorkflowName,
         workflow.Maf.Version,
-        workflow.Maf.InputSchema), ct);
+        workflow.Maf.InputSchema,
+        request.CustomerId,
+        request.CustomerData), ct);
 
     return Results.Ok(new CreateWorkflowSessionResponse(session.SessionId, session.TicketId));
 });
@@ -156,6 +163,7 @@ api.MapGet("/workflow-sessions/{sessionId}", (string sessionId, ISessionRegistry
 
 api.MapPost("/workflow-sessions/{sessionId}/reset", async (
     string sessionId,
+    ResetWorkflowSessionRequest? request,
     ISessionRegistry sessions,
     IMafCommandPublisher maf,
     CancellationToken ct) =>
@@ -166,9 +174,46 @@ api.MapPost("/workflow-sessions/{sessionId}/reset", async (
         return Results.NotFound(ErrorEnvelope.NotFound("SESSION_NOT_FOUND", $"No session with id '{sessionId}'."));
     }
 
-    await maf.ResetWorkflowAsync(new MafSessionCommand(sessionId), ct);
+    await maf.ResetWorkflowAsync(new MafSessionCommand(sessionId, request?.CustomerId, request?.CustomerData), ct);
     return Results.Ok(snapshot);
 });
+
+// Proxy para clientes na Sales Admin API
+api.MapGet("/customers/find", async (string identifier, IHttpClientFactory httpFactory, CancellationToken ct) =>
+{
+    try
+    {
+        var client = httpFactory.CreateClient("SalesAdmin");
+        var res = await client.GetAsync($"customers/find?identifier={Uri.EscapeDataString(identifier)}", ct);
+        if (!res.IsSuccessStatusCode)
+        {
+            return Results.NotFound(new { error = "Cliente não encontrado" });
+        }
+        var content = await res.Content.ReadAsStringAsync(ct);
+        return Results.Content(content, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Erro ao conectar com Sales Admin API: {ex.Message}");
+    }
+}).WithTags("Customers").AllowAnonymous();
+
+api.MapGet("/customers", async (string? search, IHttpClientFactory httpFactory, CancellationToken ct) =>
+{
+    try
+    {
+        var client = httpFactory.CreateClient("SalesAdmin");
+        var url = string.IsNullOrWhiteSpace(search) ? "customers?pageSize=10" : $"customers?search={Uri.EscapeDataString(search)}&pageSize=10";
+        var res = await client.GetAsync(url, ct);
+        if (!res.IsSuccessStatusCode) return Results.Ok(new { items = Array.Empty<object>(), total = 0 });
+        var content = await res.Content.ReadAsStringAsync(ct);
+        return Results.Content(content, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Erro ao conectar com Sales Admin API: {ex.Message}");
+    }
+}).WithTags("Customers").AllowAnonymous();
 
 api.MapGet("/workflow-sessions/{sessionId}/messages", (string sessionId, DateTimeOffset? since, ISessionRegistry sessions) =>
 {
@@ -245,90 +290,7 @@ api.MapGet("/products/{sku}/image", (string sku, IWebHostEnvironment env) =>
         </svg>
         """;
     return Results.Content(fallbackSvg, "image/svg+xml");
-}).WithTags("Sales Simulation").AllowAnonymous();
-
-api.MapGet("/products/{sku}/price", (string sku) =>
-{
-    return Results.Ok(new
-    {
-        sku,
-        price = 129.90m,
-        originalPrice = 159.90m,
-        discount = 18.8m,
-        currency = "BRL",
-        installments = new { count = 10, value = 12.99m, interestFree = true },
-        pixDiscount = 5m,
-        pixPrice = 123.40m,
-        validUntil = DateTimeOffset.UtcNow.AddDays(7)
-    });
-}).WithTags("Sales Simulation");
-
-api.MapGet("/products/{sku}/stock", (string sku) =>
-{
-    return Results.Ok(new
-    {
-        sku,
-        inStock = true,
-        quantity = 45,
-        warehouse = "CD-SP-01",
-        estimatedDelivery = "2 a 5 dias úteis",
-        storePickup = true
-    });
-}).WithTags("Sales Simulation");
-
-api.MapGet("/products/search", (string? q, string? color, string? size, string? brand, decimal? minPrice, decimal? maxPrice) =>
-{
-    return Results.Ok(new
-    {
-        query = q,
-        filters = new { color, size, brand, minPrice, maxPrice },
-        total = 3,
-        products = new[]
-        {
-            new { sku = "CAM-POLO-AZ-M", name = "Camiseta Polo Clássica", price = 129.90m, inStock = true, imageUrl = "/api/products/CAM-POLO-AZ-M/image" },
-            new { sku = "NIKE-AM90-PT-42", name = "Nike Air Max 90", price = 899.90m, inStock = true, imageUrl = "/api/products/NIKE-AM90-PT-42/image" },
-            new { sku = "NB-LENOVO-I5-16", name = "Notebook Lenovo IdeaPad 3i", price = 3499.00m, inStock = true, imageUrl = "/api/products/NB-LENOVO-I5-16/image" }
-        }
-    });
-}).WithTags("Sales Simulation");
-
-api.MapPost("/quotes", () =>
-{
-    var quoteId = $"QT-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}";
-    return Results.Ok(new
-    {
-        quoteId,
-        items = new[]
-        {
-            new { sku = "NB-LENOVO-I5-16", name = "Notebook Lenovo IdeaPad 3i", quantity = 1, unitPrice = 3499.00m, total = 3499.00m },
-            new { sku = "MOUS-LOG-WL", name = "Mouse Logitech M280 Wireless", quantity = 1, unitPrice = 79.90m, total = 79.90m }
-        },
-        subtotal = 3578.90m,
-        discount = 178.95m,
-        total = 3399.95m,
-        currency = "BRL",
-        validUntil = DateTimeOffset.UtcNow.AddDays(7),
-        paymentConditions = "Pix: R$ 3.229,95 (5% desc.) ou até 10x sem juros no cartão."
-    });
-}).WithTags("Sales Simulation");
-
-api.MapGet("/carts/abandoned/{customerId}", (string customerId) =>
-{
-    return Results.Ok(new
-    {
-        customerId,
-        cartId = "CART-8821",
-        abandonedAt = DateTimeOffset.UtcNow.AddDays(-3),
-        items = new[]
-        {
-            new { sku = "NIKE-AM90-PT-42", name = "Nike Air Max 90", quantity = 1, price = 899.90m },
-            new { sku = "FONE-JBL-T510", name = "Fone JBL Tune 510BT", quantity = 1, price = 199.90m }
-        },
-        total = 1099.80m,
-        itemsStillAvailable = true
-    });
-}).WithTags("Sales Simulation");
-
+}).WithTags("Products").AllowAnonymous();
 
 app.MapHub<FrontendWorkflowHub>("/hubs/workflow").RequireAuthorization();
 app.MapHub<MafBridgeHub>("/hubs/maf").RequireAuthorization();

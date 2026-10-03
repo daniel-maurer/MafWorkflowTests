@@ -3,6 +3,8 @@ using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using SalesWorkflow.Models;
+using SalesWorkflow.Services;
+using SalesWorkflow.Utilities;
 
 namespace SalesWorkflow.Executors;
 
@@ -10,11 +12,16 @@ internal sealed class QuoteExecutor : Executor<SalesAdviceResult, QuoteResult>
 {
     private readonly AIAgent _quoteAgent;
     private readonly IUserInteractor _userInteractor;
+    private readonly SalesAdminClient _salesAdminClient;
 
-    public QuoteExecutor(AIAgent quoteAgent, IUserInteractor userInteractor) : base("QuoteExecutor")
+    public QuoteExecutor(
+        AIAgent quoteAgent,
+        IUserInteractor userInteractor,
+        SalesAdminClient salesAdminClient) : base("QuoteExecutor")
     {
         _quoteAgent = quoteAgent;
         _userInteractor = userInteractor;
+        _salesAdminClient = salesAdminClient;
     }
 
     public override async ValueTask<QuoteResult> HandleAsync(
@@ -29,40 +36,36 @@ internal sealed class QuoteExecutor : Executor<SalesAdviceResult, QuoteResult>
         await _userInteractor.PublishContextAsync(
             "generating-quote",
             "Assistente Comercial",
-            "Montando proposta comercial e orçamento formal...",
+            "Gerando proposta comercial...",
             "quote",
             false,
             cancellationToken);
 
         var cart = await context.ReadStateAsync<List<ProductInfo>>(Constants.CartItemsKey, Constants.SalesStateScope) ?? [];
-        var allProductsToQuote = cart.ToList();
-        foreach (var p in adviceResult.SelectedProducts)
-        {
-            if (!allProductsToQuote.Any(existing => string.Equals(existing.Sku, p.Sku, StringComparison.OrdinalIgnoreCase)))
-            {
-                allProductsToQuote.Add(p);
-            }
-        }
+        var allProductsToQuote = (adviceResult.SelectedProducts != null && adviceResult.SelectedProducts.Count > 0)
+            ? adviceResult.SelectedProducts
+            : cart;
 
         if (allProductsToQuote.Count == 0)
         {
-            allProductsToQuote = adviceResult.SelectedProducts;
+            allProductsToQuote = await context.ReadStateAsync<List<ProductInfo>>(Constants.SelectedProductsKey, Constants.SalesStateScope) ?? [];
         }
 
-        var skus = allProductsToQuote.Select(p => p.Sku).ToList();
-        var kitInfo = !string.IsNullOrWhiteSpace(adviceResult.AcceptedKitName)
-            ? $"Pacote/Combo Aceito: {adviceResult.AcceptedKitName} com {adviceResult.DiscountPercent}% de desconto comercial."
-            : "Orçamento com os produtos selecionados pelo cliente.";
+        var conditions = await _salesAdminClient.GetPaymentConditionsAsync(cancellationToken);
 
-        var prompt = $@"INFORMAÇÕES DA NEGOCIAÇÃO:
-{kitInfo}
-
-PRODUTOS SELECIONADOS PELO CLIENTE (orçar EXATAMENTE estes itens, NÃO inclua nenhum outro item):
+        var prompt = $@"Gere um orçamento formal para os seguintes produtos confirmados pelo cliente:
 {JsonSerializer.Serialize(allProductsToQuote.Select(p => new { p.Sku, p.Name, p.Price }))}
 
-INSTRUÇÕES ESTRITAS:
-1. Chame GenerateQuote com a lista de SKUs: {JsonSerializer.Serialize(skus)} e quantidades (1 para cada item).
-{(adviceResult.DiscountPercent > 0 ? $"2. O cliente aceitou o pacote promocional! Chame ApplyDiscount informando o quoteId retornado e o percentual {adviceResult.DiscountPercent} de desconto.\n3." : "2.")} Responda SEMPRE no esquema JSON de QuoteResult com o valor final.";
+Condições especiais aplicáveis:
+- Desconto especial acordado: {adviceResult.DiscountPercent}%
+- Nome do combo/kit: {(string.IsNullOrWhiteSpace(adviceResult.AcceptedKitName) ? "Itens avulsos selecionados" : adviceResult.AcceptedKitName)}
+- Formas de pagamento ativas: {JsonSerializer.Serialize(conditions.Where(c => c.Active))}
+
+INSTRUÇÕES:
+1. Chame GenerateQuote com a lista de SKUs e quantidades.
+2. Não invente regras de pagamento — utilize as opções retornadas pelo sistema.
+3. Conclua imediatamente gerando o JSON de QuoteResult.
+Responda SEMPRE estritamente no esquema JSON de QuoteResult.";
 
         var response = await _quoteAgent.RunAsync(prompt, cancellationToken: cancellationToken);
 
@@ -84,7 +87,7 @@ INSTRUÇÕES ESTRITAS:
                 Total = total,
                 Currency = "BRL",
                 ValidUntil = DateTimeOffset.UtcNow.AddDays(7),
-                PaymentConditions = $"Pix à vista com 5% adicional (R$ {total * 0.95m:N2}) ou até 10x sem juros no cartão.",
+                PaymentConditions = PaymentConditionFormatter.Format(conditions, total),
                 MessageForUser = $"Orçamento {quoteId} gerado com sucesso! Total: R$ {total:N2} com validade de 7 dias.",
                 Items = allProductsToQuote.Select(p => new QuoteItem
                 {
@@ -117,18 +120,91 @@ INSTRUÇÕES ESTRITAS:
                     quoteResult.Discount = Math.Round(quoteResult.Subtotal * (adviceResult.DiscountPercent / 100m), 2);
                 }
                 quoteResult.Total = Math.Max(0, quoteResult.Subtotal - quoteResult.Discount);
-                quoteResult.PaymentConditions = $"Pix à vista com 5% adicional (R$ {quoteResult.Total * 0.95m:N2}) ou até 10x sem juros no cartão.";
+                quoteResult.PaymentConditions = PaymentConditionFormatter.Format(conditions, quoteResult.Total);
             }
             else if (adviceResult.DiscountPercent > 0 && quoteResult.Discount == 0)
             {
                 var discountAmount = Math.Round(quoteResult.Subtotal * (adviceResult.DiscountPercent / 100m), 2);
                 quoteResult.Discount = discountAmount;
                 quoteResult.Total = Math.Max(0, quoteResult.Subtotal - discountAmount);
-                quoteResult.PaymentConditions = $"Pix à vista com 5% adicional (R$ {quoteResult.Total * 0.95m:N2}) ou até 10x sem juros no cartão.";
+                quoteResult.PaymentConditions = PaymentConditionFormatter.Format(conditions, quoteResult.Total);
+            }
+            else if (string.IsNullOrWhiteSpace(quoteResult.PaymentConditions) || quoteResult.PaymentConditions.Contains("5% adicional"))
+            {
+                quoteResult.PaymentConditions = PaymentConditionFormatter.Format(conditions, quoteResult.Total);
             }
         }
 
         await context.QueueStateUpdateAsync(Constants.QuoteIdKey, quoteResult.QuoteId, Constants.SalesStateScope);
+
+        // ── Consulta de Entrega e Cadastro Progressivo de Endereço ──
+        CustomerInfo? customer = null;
+        if (_userInteractor is ISalesUserInteractor salesUi)
+        {
+            customer = salesUi.CurrentCustomer;
+        }
+        if (customer == null)
+        {
+            customer = await context.ReadStateAsync<CustomerInfo>(Constants.CustomerDataKey, Constants.SalesStateScope);
+        }
+
+        if (customer != null && !string.IsNullOrWhiteSpace(customer.Id))
+        {
+            await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
+
+            string deliveryQuestion;
+            if (customer.Addresses != null && customer.Addresses.Count > 0)
+            {
+                var defaultAddr = customer.Addresses.FirstOrDefault(a => a.IsDefault) ?? customer.Addresses[0];
+                deliveryQuestion = $"Gostaria que a gente enviasse o pedido para entrega? Já temos seu endereço cadastrado: {defaultAddr.Street}, {defaultAddr.Number} - {defaultAddr.City}/{defaultAddr.State}. Deseja confirmar para este endereço ou cadastrar outro? (Responda 'sim' para confirmar, informe um novo endereço, ou 'não' para retirar na loja).";
+            }
+            else
+            {
+                deliveryQuestion = "Você gostaria que a gente enviasse o seu pedido para entrega? (Se sim, por favor informe seu endereço completo: Rua, Número, Bairro, Cidade e CEP. Se preferir retirar na loja física, basta responder 'não').";
+            }
+
+            var deliveryAnswer = await _userInteractor.GetUserResponseAsync(
+                deliveryQuestion,
+                "quote",
+                audience: MessageAudience.Both,
+                cancellationToken: cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(deliveryAnswer) &&
+                !deliveryAnswer.Trim().Equals("não", StringComparison.OrdinalIgnoreCase) &&
+                !deliveryAnswer.Trim().Equals("nao", StringComparison.OrdinalIgnoreCase) &&
+                !deliveryAnswer.Trim().Equals("retirar", StringComparison.OrdinalIgnoreCase) &&
+                !deliveryAnswer.Trim().Equals("loja", StringComparison.OrdinalIgnoreCase))
+            {
+                var cleanAns = deliveryAnswer.Trim().ToLowerInvariant();
+                var isConfirmation = cleanAns is "sim" or "quero" or "pode enviar" or "confirmo" or "isso" or "ok";
+
+                if (isConfirmation && customer.Addresses != null && customer.Addresses.Count > 0)
+                {
+                    var defaultAddr = customer.Addresses.FirstOrDefault(a => a.IsDefault) ?? customer.Addresses[0];
+                    await _userInteractor.PublishTraceAsync($"Entrega confirmada no endereço existente do cliente: {defaultAddr.Street}, {defaultAddr.Number}", "success", cancellationToken);
+                    quoteResult.MessageForUser += $"\n\n📦 **Entrega**: Pedido agendado para envio em: {defaultAddr.Street}, {defaultAddr.Number} - {defaultAddr.City}/{defaultAddr.State}.";
+                }
+                else
+                {
+                    var parsed = AddressParser.Parse(deliveryAnswer);
+                    var saved = await _salesAdminClient.AddCustomerAddressAsync(customer.Id, parsed, cancellationToken);
+                    if (saved != null)
+                    {
+                        customer.Addresses ??= [];
+                        customer.Addresses.Add(saved);
+                        if (_userInteractor is ISalesUserInteractor si) si.CurrentCustomer = customer;
+                        await context.QueueStateUpdateAsync(Constants.CustomerDataKey, customer, Constants.SalesStateScope);
+                        await _userInteractor.PublishTraceAsync($"Novo endereço cadastrado no perfil do cliente: {saved.Street}, {saved.Number} - {saved.City}/{saved.State}", "success", cancellationToken);
+                        quoteResult.MessageForUser += $"\n\n📦 **Entrega cadastrada**: {saved.Street}, {saved.Number}, {saved.Neighborhood} - {saved.City}/{saved.State}, CEP {saved.ZipCode}.";
+                    }
+                }
+            }
+            else
+            {
+                await _userInteractor.PublishTraceAsync("Cliente optou por retirada em loja física.", "info", cancellationToken);
+                quoteResult.MessageForUser += "\n\n🏬 **Retirada**: O pedido estará disponível para retirada em nossa loja física após confirmação.";
+            }
+        }
 
         await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
         await _userInteractor.PublishAgentStateAsync("quote", "done", "Done", cancellationToken);
@@ -143,28 +219,22 @@ INSTRUÇÕES ESTRITAS:
         };
         if (quoteResult.Discount > 0)
         {
-            quoteTools.Add(new AgentToolCall { Name = "ApplyDiscount", Args = $"{adviceResult.DiscountPercent}% off (-R$ {quoteResult.Discount:N2})", Ok = true });
+            quoteTools.Add(new AgentToolCall { Name = "ApplyDiscount", Args = $"desconto: R$ {quoteResult.Discount:N2}", Ok = true });
         }
 
-        var kitHeader = !string.IsNullOrWhiteSpace(adviceResult.AcceptedKitName)
-            ? $"• **Combo/Kit**: {adviceResult.AcceptedKitName}\n"
-            : string.Empty;
+        var quoteImages = allProductsToQuote
+            .Where(p => !string.IsNullOrWhiteSpace(p.ImageUrl))
+            .Select(p => new MafImagePayload { Url = p.ImageUrl, Alt = p.Name, Sku = p.Sku })
+            .ToList();
 
-        var formattedMessage = $"{quoteResult.MessageForUser}\n\n" +
-            $"📋 **Orçamento {quoteResult.QuoteId}**\n" +
-            kitHeader +
-            $"• **Subtotal**: R$ {quoteResult.Subtotal:N2}\n" +
-            (quoteResult.Discount > 0 ? $"• **Desconto Aplicado ({adviceResult.DiscountPercent}%)**: -R$ {quoteResult.Discount:N2}\n" : string.Empty) +
-            $"• **Total**: **R$ {quoteResult.Total:N2}**\n" +
-            $"• **Validade**: até {quoteResult.ValidUntil:dd/MM/yyyy}\n" +
-            $"• **Condições**: {quoteResult.PaymentConditions}\n\n" +
-            "Deseja receber este orçamento por WhatsApp ou e-mail?";
+        var quoteMsg = $"{quoteResult.MessageForUser}\n\n**Condições de Pagamento:**\n{quoteResult.PaymentConditions}";
 
         await _userInteractor.SendUserResponseAsync(
-            formattedMessage,
+            quoteMsg,
             "quote",
             tools: quoteTools,
             audience: MessageAudience.Both,
+            images: quoteImages.Count > 0 ? quoteImages : null,
             cancellationToken: cancellationToken);
 
         await context.YieldOutputAsync(quoteResult, cancellationToken);

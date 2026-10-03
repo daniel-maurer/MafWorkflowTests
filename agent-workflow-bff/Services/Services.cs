@@ -63,16 +63,31 @@ public sealed class JsonWorkflowConfigStore(IWebHostEnvironment env, IOptions<Wo
                 return _cache;
             }
 
-            var folder = Path.IsPathRooted(options.Value.Folder)
-                ? options.Value.Folder
-                : Path.Combine(env.ContentRootPath, options.Value.Folder);
+            var foldersToScan = new List<string>();
+            if (options.Value.Folders is { Length: > 0 })
+            {
+                foldersToScan.AddRange(options.Value.Folders);
+            }
+            else if (!string.IsNullOrWhiteSpace(options.Value.Folder))
+            {
+                foldersToScan.Add(options.Value.Folder);
+            }
 
-            var files = Directory.Exists(folder)
-                ? Directory.GetFiles(folder, "*.json", SearchOption.TopDirectoryOnly)
-                : [];
+            var files = new List<string>();
+            foreach (var candidateFolder in foldersToScan)
+            {
+                var folder = Path.IsPathRooted(candidateFolder)
+                    ? candidateFolder
+                    : Path.Combine(env.ContentRootPath, candidateFolder);
+
+                if (Directory.Exists(folder))
+                {
+                    files.AddRange(Directory.GetFiles(folder, "*.json", SearchOption.TopDirectoryOnly));
+                }
+            }
 
             var workflows = new List<WorkflowDefinitionDto>();
-            foreach (var file in files)
+            foreach (var file in files.Distinct())
             {
                 await using var stream = File.OpenRead(file);
                 var workflow = await JsonSerializer.DeserializeAsync<WorkflowDefinitionDto>(stream, JsonOptions, cancellationToken);
@@ -82,7 +97,7 @@ public sealed class JsonWorkflowConfigStore(IWebHostEnvironment env, IOptions<Wo
                 }
             }
 
-            _cache = workflows.OrderBy(item => item.Title).ToArray();
+            _cache = workflows.DistinctBy(w => w.Id, StringComparer.OrdinalIgnoreCase).OrderBy(item => item.Title).ToArray();
             return _cache;
         }
         finally

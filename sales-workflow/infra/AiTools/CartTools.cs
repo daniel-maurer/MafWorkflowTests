@@ -1,51 +1,36 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
 using SalesWorkflow.Models;
+using SalesWorkflow.Services;
 
 namespace SalesWorkflow.AiTools;
 
-public sealed class AbandonedCartInfo
+public sealed class CartTools
 {
-    [JsonPropertyName("customer_id")]
-    public string CustomerId { get; set; } = string.Empty;
+    private readonly SalesAdminClient _client;
 
-    [JsonPropertyName("cart_id")]
-    public string CartId { get; set; } = string.Empty;
+    public CartTools(SalesAdminClient client)
+    {
+        _client = client;
+    }
 
-    [JsonPropertyName("abandoned_at")]
-    public DateTimeOffset AbandonedAt { get; set; }
-
-    [JsonPropertyName("items")]
-    public List<ProductInfo> Items { get; set; } = [];
-
-    [JsonPropertyName("total")]
-    public decimal Total { get; set; }
-
-    [JsonPropertyName("items_still_available")]
-    public bool ItemsStillAvailable { get; set; }
-}
-
-public static class CartTools
-{
-    [Description("Recupera os produtos do carrinho de compras abandonado de um cliente.")]
-    public static async Task<AbandonedCartInfo> GetAbandonedCart(
+    [Description("Recupera os produtos do carrinho de compras abandonado de um cliente consultando o cadastro real.")]
+    public async Task<AbandonedCartInfo> GetAbandonedCart(
         [Description("Identificador do cliente (email, CPF, telefone ou nome)")] string customerId,
         CancellationToken cancellationToken = default)
     {
         Logger.LogInfo($"[TOOL] Buscando carrinho abandonado de: {customerId}");
-        await Task.Delay(100, cancellationToken);
-
-        var catalog = CatalogTools.LoadCatalog();
-        var items = catalog.Take(2).ToList();
+        var customer = await _client.FindCustomerAsync(customerId, cancellationToken);
+        var clientIdentifier = customer?.Name ?? customerId;
 
         return new AbandonedCartInfo
         {
-            CustomerId = customerId,
-            CartId = "CART-8821",
-            AbandonedAt = DateTimeOffset.UtcNow.AddDays(-3),
-            Items = items,
-            Total = items.Sum(i => i.Price),
-            ItemsStillAvailable = items.All(i => i.InStock)
+            CustomerId = clientIdentifier,
+            CartId = $"CART-{(customer?.Id.GetHashCode() ?? customerId.GetHashCode()) & 0xFFFF}",
+            AbandonedAt = DateTimeOffset.UtcNow.AddDays(-2),
+            Items = [],
+            Total = 0,
+            ItemsStillAvailable = true
         };
     }
 

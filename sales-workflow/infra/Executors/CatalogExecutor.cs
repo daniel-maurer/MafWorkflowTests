@@ -11,11 +11,13 @@ internal sealed class CatalogExecutor : Executor<IntentResult, CatalogResult>
 {
     private readonly AIAgent _catalogAgent;
     private readonly IUserInteractor _userInteractor;
+    private readonly CatalogTools _catalogTools;
 
-    public CatalogExecutor(AIAgent catalogAgent, IUserInteractor userInteractor) : base("CatalogExecutor")
+    public CatalogExecutor(AIAgent catalogAgent, IUserInteractor userInteractor, CatalogTools catalogTools) : base("CatalogExecutor")
     {
         _catalogAgent = catalogAgent;
         _userInteractor = userInteractor;
+        _catalogTools = catalogTools;
     }
 
     public override async ValueTask<CatalogResult> HandleAsync(
@@ -25,7 +27,7 @@ internal sealed class CatalogExecutor : Executor<IntentResult, CatalogResult>
     {
         Logger.LogInfo($"[CatalogExecutor] Processando intenção '{intentResult.Intent}' com query '{intentResult.ExtractedProductQuery}'");
 
-        await _userInteractor.SetAgentTypingAsync("Consultando catálogo e disponibilidade em estoque...", true, cancellationToken);
+        await _userInteractor.SetAgentTypingAsync("Consultando catálogo e disponibilidade em estoque via RAG...", true, cancellationToken);
         await _userInteractor.PublishAgentStateAsync("catalog", "active", "Running", cancellationToken);
         await _userInteractor.PublishContextAsync(
             "searching-catalog",
@@ -53,7 +55,7 @@ internal sealed class CatalogExecutor : Executor<IntentResult, CatalogResult>
             return directHandoff;
         }
 
-        CatalogTools.ResetSearchCounter();
+        _catalogTools.ResetSearchCounter();
 
         var prompt = $@"O cliente possui a intenção '{intentResult.Intent}'.
 Termo de busca extraído: '{intentResult.ExtractedProductQuery}'.
@@ -61,10 +63,10 @@ Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())
 Resumo: {intentResult.Summary}.
 
 INSTRUÇÕES:
-- Faça no máximo 5 buscas (SearchProducts) usando palavras ou variações diferentes.
+- Faça no máximo 5 buscas (SearchProducts) usando palavras ou variações semânticas.
 - NUNCA repita o mesmo termo que já buscou.
 - Se encontrar produtos, pare de buscar imediatamente e gere a resposta.
-- Se após até 5 tentativas com termos diferentes não encontrar nada, DESISTA: defina has_results = false e requires_human = true.
+- Se após até 5 tentativas com termos diferentes não encontrar nada, encerre: defina has_results = false e requires_human = true.
 Responda SEMPRE estritamente no esquema JSON de CatalogResult.";
 
         var response = await _catalogAgent.RunAsync(prompt, cancellationToken: cancellationToken);

@@ -1,46 +1,27 @@
+using MafWorkflow.Worker.Core;
+
 namespace SalesWorkflow;
 
-public class WorkflowConfiguration
+public class WorkflowConfiguration : WorkflowConfigurationBase
 {
-    public string AzureOpenAiEndpoint { get; set; } = string.Empty;
-    public string AzureOpenAiDeploymentName { get; set; } = string.Empty;
     public string ProductCatalogPath { get; set; } = string.Empty;
-    public string BffBaseUrl { get; set; } = string.Empty;
-    public string WorkerId { get; set; } = string.Empty;
+    public string SalesAdminBaseUrl { get; set; } = "http://localhost:5100/api";
 
     public static WorkflowConfiguration FromEnvironment()
     {
-        var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT environment variable is not set.");
-        }
-
-        return new()
-        {
-            AzureOpenAiEndpoint = endpoint,
-            AzureOpenAiDeploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-4o-mini",
-            ProductCatalogPath = Environment.GetEnvironmentVariable("PRODUCT_CATALOG_PATH") ?? "product_catalog.json",
-            BffBaseUrl = Environment.GetEnvironmentVariable("BFF_BASE_URL") ?? Environment.GetEnvironmentVariable("WORKFLOW_BFF_BASE_URL") ?? "http://localhost:5089/hubs/maf",
-            WorkerId = Environment.GetEnvironmentVariable("WORKFLOW_WORKER_ID") ?? "maf-sales-worker-01"
-        };
+        var config = new WorkflowConfiguration();
+        LoadBaseEnvironment(config, "maf-sales-worker-01");
+        config.ProductCatalogPath = Environment.GetEnvironmentVariable("PRODUCT_CATALOG_PATH") ?? "product_catalog.json";
+        config.SalesAdminBaseUrl = Environment.GetEnvironmentVariable("SALES_ADMIN_API_URL") ?? "http://localhost:5100/api";
+        return config;
     }
 
-    public void Validate()
+    public override void Validate()
     {
-        if (string.IsNullOrWhiteSpace(AzureOpenAiEndpoint))
+        base.Validate();
+        if (!string.IsNullOrWhiteSpace(SalesAdminBaseUrl) && !Uri.TryCreate(SalesAdminBaseUrl, UriKind.Absolute, out _))
         {
-            throw new InvalidOperationException("AzureOpenAiEndpoint is not configured.");
-        }
-
-        if (!Uri.TryCreate(AzureOpenAiEndpoint, UriKind.Absolute, out _))
-        {
-            throw new InvalidOperationException($"AzureOpenAiEndpoint '{AzureOpenAiEndpoint}' is not a valid URI.");
-        }
-
-        if (!string.IsNullOrWhiteSpace(BffBaseUrl) && !Uri.TryCreate(BffBaseUrl, UriKind.Absolute, out _))
-        {
-            throw new InvalidOperationException($"BffBaseUrl '{BffBaseUrl}' is not a valid URI.");
+            throw new InvalidOperationException($"SalesAdminBaseUrl '{SalesAdminBaseUrl}' is not a valid URI.");
         }
     }
 }

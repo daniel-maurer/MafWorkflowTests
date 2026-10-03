@@ -7,7 +7,7 @@ namespace SalesWorkflow.AgentFactories;
 
 public static class FollowUpAgentFactory
 {
-    public static ChatClientAgent GetFollowUpAgent(IChatClient chatClient)
+    public static ChatClientAgent GetFollowUpAgent(IChatClient chatClient, CartTools cartTools)
     {
         return new(chatClient, new ChatClientAgentOptions(
             instructions: @"Você é o Agente de Follow-Up e Recuperação de Vendas.
@@ -30,7 +30,7 @@ Responda SEMPRE estritamente no esquema JSON de FollowUpResult.",
                 Tools =
                 [
                     AIFunctionFactory.Create(FollowUpTools.ScheduleFollowUp),
-                    AIFunctionFactory.Create(CartTools.GetAbandonedCart),
+                    AIFunctionFactory.Create(cartTools.GetAbandonedCart),
                     AIFunctionFactory.Create(CartTools.SendCartReminder)
                 ]
             }
