@@ -22,13 +22,26 @@ public sealed class ProductImageInfo
 public sealed class CatalogTools
 {
     private readonly SalesAdminClient _client;
+    private const int MaxSearchAttempts = 10;
     private int _searchAttempts = 0;
     private readonly HashSet<string> _searchedQueries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<ProductInfo> _lastFoundProducts = new();
     private readonly object _lock = new();
 
     public CatalogTools(SalesAdminClient client)
     {
         _client = client;
+    }
+
+    public IReadOnlyList<ProductInfo> LastFoundProducts
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _lastFoundProducts.ToList();
+            }
+        }
     }
 
     public void ResetSearchCounter()
@@ -37,26 +50,22 @@ public sealed class CatalogTools
         {
             _searchAttempts = 0;
             _searchedQueries.Clear();
+            _lastFoundProducts.Clear();
         }
     }
 
-    [Description("Pesquisa produtos no catálogo via busca semântica (RAG pgvector) e palavras-chave. Limite de 5 tentativas com termos diferentes.")]
+    [Description("Pesquisa produtos no catálogo via busca semântica e palavras-chave (RAG pgvector). Retorna os produtos mais relevantes do estoque para avaliação.")]
     public async Task<List<ProductInfo>> SearchProducts(
-        [Description("Termo de busca com palavras-chave ou descrição do produto desejado")] string query,
-        [Description("Cor desejada (opcional)")] string? color = null,
-        [Description("Tamanho desejado (opcional)")] string? size = null,
-        [Description("Marca (opcional)")] string? brand = null,
-        [Description("Preço mínimo (opcional)")] decimal? minPrice = null,
-        [Description("Preço máximo (opcional)")] decimal? maxPrice = null,
+        [Description("Termo de busca com palavras-chave, características ou descrição do produto desejado")] string query,
         CancellationToken cancellationToken = default)
     {
         var trimmedQuery = query?.Trim() ?? string.Empty;
 
         lock (_lock)
         {
-            if (_searchAttempts >= 5)
+            if (_searchAttempts >= MaxSearchAttempts)
             {
-                Logger.LogWarning($"[TOOL] Limite de 5 tentativas de busca atingido para a query: '{trimmedQuery}'. Encerrando buscas.");
+                Logger.LogWarning($"[TOOL] Limite de {MaxSearchAttempts} tentativas de busca atingido para a query: '{trimmedQuery}'. Encerrando buscas.");
                 return [];
             }
 
@@ -70,40 +79,23 @@ public sealed class CatalogTools
             _searchedQueries.Add(trimmedQuery);
         }
 
-        Logger.LogInfo($"[TOOL] Pesquisando produtos via RAG ({_searchAttempts}/5): '{trimmedQuery}' (cor={color}, tam={size}, marca={brand})");
+        Logger.LogInfo($"[TOOL] Pesquisando produtos via RAG ({_searchAttempts}/{MaxSearchAttempts}): '{trimmedQuery}'");
 
-        // 1. Busca Semântica RAG no PostgreSQL (pgvector)
-        var results = await _client.SearchProductsSemanticAsync(trimmedQuery, top: 10, cancellationToken);
+        // Busca Semântica RAG no PostgreSQL (pgvector + léxico híbrido)
+        var results = await _client.SearchProductsSemanticAsync(trimmedQuery, top: 20, cancellationToken);
 
-        // 2. Filtros em memória adicionais se fornecidos
-        var filtered = results.AsEnumerable();
-
-        if (!string.IsNullOrWhiteSpace(color))
+        lock (_lock)
         {
-            filtered = filtered.Where(p => string.Equals(p.Color, color, StringComparison.OrdinalIgnoreCase));
+            foreach (var p in results)
+            {
+                if (!_lastFoundProducts.Any(x => x.Sku == p.Sku))
+                {
+                    _lastFoundProducts.Add(p);
+                }
+            }
         }
 
-        if (!string.IsNullOrWhiteSpace(size))
-        {
-            filtered = filtered.Where(p => string.Equals(p.Size, size, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (!string.IsNullOrWhiteSpace(brand))
-        {
-            filtered = filtered.Where(p => string.Equals(p.Brand, brand, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (minPrice.HasValue)
-        {
-            filtered = filtered.Where(p => p.Price >= minPrice.Value);
-        }
-
-        if (maxPrice.HasValue)
-        {
-            filtered = filtered.Where(p => p.Price <= maxPrice.Value);
-        }
-
-        return filtered.Take(5).ToList();
+        return results;
     }
 
     [Description("Verifica a disponibilidade de estoque real de um produto no banco pelo SKU.")]

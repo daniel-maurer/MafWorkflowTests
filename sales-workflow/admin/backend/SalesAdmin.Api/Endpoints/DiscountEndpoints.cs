@@ -44,9 +44,10 @@ public static class DiscountEndpoints
         group.MapGet("/code/{code}", async (string code, [FromServices] SalesAdminDbContext db) =>
         {
             var now = DateTimeOffset.UtcNow;
+            var cleanCode = code.Trim().ToLowerInvariant();
             var discount = await db.Discounts
                 .Include(d => d.TargetProducts)
-                .FirstOrDefaultAsync(d => d.Code.Equals(code, StringComparison.OrdinalIgnoreCase) && d.Active);
+                .FirstOrDefaultAsync(d => d.Code.ToLower() == cleanCode && d.Active);
 
             if (discount is null) return Results.NotFound(new { error = "Cupom não encontrado ou inativo." });
 

@@ -62,11 +62,15 @@ Termo de busca extraído: '{intentResult.ExtractedProductQuery}'.
 Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())}.
 Resumo: {intentResult.Summary}.
 
-INSTRUÇÕES:
-- Faça no máximo 5 buscas (SearchProducts) usando palavras ou variações semânticas.
-- NUNCA repita o mesmo termo que já buscou.
-- Se encontrar produtos, pare de buscar imediatamente e gere a resposta.
-- Se após até 5 tentativas com termos diferentes não encontrar nada, encerre: defina has_results = false e requires_human = true.
+DIRETRIZES DE BUSCA E RANQUEAMENTO NO CATÁLOGO:
+1. Realize a busca usando o termo informado pelo cliente: '{intentResult.ExtractedProductQuery}'.
+2. AVALIAÇÃO E RANQUEAMENTO:
+   - Ordene os produtos retornados do MAIS próximo para o MENOS próximo do que o cliente pediu.
+   - O 1º LUGAR da lista 'products' deve ser a opção que mais perfeitamente atende a todos os critérios (modelo, tipo, cor, estilo).
+   - O 2º e 3º lugares devem ser alternativas próximas interessantes para o cliente comparar.
+3. Se houver produtos em estoque compatíveis, defina has_results = true, requires_human = false, e formule 'message_for_user' destacando a primeira opção como a principal recomendação e apresentando as demais como opções adicionais.
+4. Apenas se após as buscas não existir nenhum produto compatível no estoque, encerre com has_results = false e requires_human = true.
+
 Responda SEMPRE estritamente no esquema JSON de CatalogResult.";
 
         var response = await _catalogAgent.RunAsync(prompt, cancellationToken: cancellationToken);
@@ -83,12 +87,28 @@ Responda SEMPRE estritamente no esquema JSON de CatalogResult.";
             };
         }
 
+        // Resgate inteligente: Se o agente marcou que não encontrou mas a ferramenta retornou produtos com estoque
+        if ((!catalogResult.HasResults || catalogResult.Products == null || catalogResult.Products.Count == 0) && _catalogTools.LastFoundProducts.Count > 0)
+        {
+            var inStockProducts = _catalogTools.LastFoundProducts.Where(p => p.InStock && p.StockQty > 0).Take(5).ToList();
+            if (inStockProducts.Count > 0)
+            {
+                Logger.LogInfo($"[CatalogExecutor] Resgatando {inStockProducts.Count} produto(s) em estoque encontrados pela ferramenta que atendem a busca '{intentResult.ExtractedProductQuery}'.");
+                catalogResult.HasResults = true;
+                catalogResult.RequiresHuman = false;
+                catalogResult.Products = inStockProducts;
+                catalogResult.MessageForUser = $"Encontrei ótimas opções em nosso estoque que atendem perfeitamente ao seu pedido de '{intentResult.ExtractedProductQuery}':\n\n" +
+                    string.Join("\n", inStockProducts.Select(p => $"• **{p.Name}** — R$ {p.Price:N2} (Cor: {p.Color}, Tam: {p.Size})")) +
+                    "\n\nAlguma dessas opções te agrada ou você gostaria de ver mais detalhes?";
+            }
+        }
+
         catalogResult.OriginalIntent = intentResult.Intent;
 
         await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
         await _userInteractor.PublishAgentStateAsync("catalog", "done", "Done", cancellationToken);
 
-        if (catalogResult.HasResults && catalogResult.Products.Count > 0)
+        if (catalogResult.HasResults && catalogResult.Products is { Count: > 0 })
         {
             await context.QueueStateUpdateAsync(Constants.SelectedProductsKey, catalogResult.Products, Constants.SalesStateScope);
 

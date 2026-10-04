@@ -43,14 +43,39 @@ public static class AgentResponseParser
 
         int braceCount = 0;
         int endIndex = -1;
+        bool inString = false;
+        bool isEscaped = false;
 
         for (int i = startIndex; i < responseText.Length; i++)
         {
-            if (responseText[i] == '{')
+            char c = responseText[i];
+
+            if (inString)
+            {
+                if (isEscaped)
+                {
+                    isEscaped = false;
+                }
+                else if (c == '\\')
+                {
+                    isEscaped = true;
+                }
+                else if (c == '"')
+                {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inString = true;
+            }
+            else if (c == '{')
             {
                 braceCount++;
             }
-            else if (responseText[i] == '}')
+            else if (c == '}')
             {
                 braceCount--;
                 if (braceCount == 0)

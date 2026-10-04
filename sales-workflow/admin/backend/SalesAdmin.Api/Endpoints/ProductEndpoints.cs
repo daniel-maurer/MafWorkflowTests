@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SalesAdmin.Api.Data;
@@ -99,10 +100,11 @@ public static class ProductEndpoints
 
         group.MapGet("/sku/{sku}", async (string sku, [FromServices] SalesAdminDbContext db) =>
         {
+            var cleanSku = sku.Trim().ToLowerInvariant();
             var product = await db.Products
                 .Include(p => p.Category)
                 .Include(p => p.Images)
-                .FirstOrDefaultAsync(p => p.Sku.Equals(sku, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefaultAsync(p => p.Sku.ToLower() == cleanSku);
 
             if (product is null) return Results.NotFound();
 
@@ -264,6 +266,8 @@ public static class ProductEndpoints
     );
 }
 
+
+
 public sealed record ProductResponseDto(
     Guid Id,
     string Sku,
@@ -271,16 +275,16 @@ public sealed record ProductResponseDto(
     string Description,
     decimal Price,
     string Currency,
-    bool InStock,
-    int StockQty,
+    [property: JsonPropertyName("in_stock")] bool InStock,
+    [property: JsonPropertyName("stock_qty")] int StockQty,
     string? Color,
     string? Size,
     string? Brand,
     Guid? CategoryId,
     string? CategoryName,
     List<string> Tags,
-    List<string> CompatibleSkus,
-    string? ImageUrl,
+    [property: JsonPropertyName("compatible_skus")] List<string> CompatibleSkus,
+    [property: JsonPropertyName("image_url")] string? ImageUrl,
     bool Active,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);

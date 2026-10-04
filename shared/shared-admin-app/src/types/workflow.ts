@@ -156,3 +156,13 @@ export interface SessionSnapshot {
   trace: TraceEvent[];
   kb: KbItem[];
 }
+
+export interface AgentInstructionItem {
+  id?: string;
+  workflowType: string;
+  agentRole: string;
+  instructions: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}

@@ -80,6 +80,7 @@ builder.Services.AddSingleton<IWorkflowConfigStore, JsonWorkflowConfigStore>();
 builder.Services.AddSingleton<ISessionRegistry, InMemorySessionRegistry>();
 builder.Services.AddSingleton<IFrontendEventPublisher, FrontendEventPublisher>();
 builder.Services.AddSingleton<IMafCommandPublisher, MafCommandPublisher>();
+builder.Services.AddSingleton<IBffNoSqlStore, JsonBffNoSqlStore>();
 
 builder.Services.AddHttpClient("SalesAdmin", client =>
 {
@@ -291,6 +292,32 @@ api.MapGet("/products/{sku}/image", (string sku, IWebHostEnvironment env) =>
         """;
     return Results.Content(fallbackSvg, "image/svg+xml");
 }).WithTags("Products").AllowAnonymous();
+
+// ── NoSQL Storage: Theme Settings ──
+api.MapGet("/settings/theme", async (IBffNoSqlStore noSqlStore, CancellationToken ct) =>
+{
+    var themeDoc = await noSqlStore.GetDocumentAsync<ThemeSettingDto>("settings", "theme", ct);
+    themeDoc ??= new ThemeSettingDto { Theme = "escuro", UpdatedAt = DateTimeOffset.UtcNow };
+    return Results.Ok(themeDoc);
+}).WithTags("Settings").AllowAnonymous();
+
+api.MapPost("/settings/theme", async (ThemeSettingRequest request, IBffNoSqlStore noSqlStore, CancellationToken ct) =>
+{
+    var raw = request?.Theme?.Trim().ToLowerInvariant() ?? "escuro";
+    var normalized = (raw == "clara" || raw == "claro" || raw == "light") ? "claro" : "escuro";
+    var doc = new ThemeSettingDto { Theme = normalized, UpdatedAt = DateTimeOffset.UtcNow };
+    await noSqlStore.UpsertDocumentAsync("settings", "theme", doc, ct);
+    return Results.Ok(doc);
+}).WithTags("Settings").AllowAnonymous();
+
+api.MapPut("/settings/theme", async (ThemeSettingRequest request, IBffNoSqlStore noSqlStore, CancellationToken ct) =>
+{
+    var raw = request?.Theme?.Trim().ToLowerInvariant() ?? "escuro";
+    var normalized = (raw == "clara" || raw == "claro" || raw == "light") ? "claro" : "escuro";
+    var doc = new ThemeSettingDto { Theme = normalized, UpdatedAt = DateTimeOffset.UtcNow };
+    await noSqlStore.UpsertDocumentAsync("settings", "theme", doc, ct);
+    return Results.Ok(doc);
+}).WithTags("Settings").AllowAnonymous();
 
 app.MapHub<FrontendWorkflowHub>("/hubs/workflow").RequireAuthorization();
 app.MapHub<MafBridgeHub>("/hubs/maf").RequireAuthorization();

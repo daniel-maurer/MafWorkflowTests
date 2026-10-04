@@ -18,6 +18,7 @@ public class SalesAdminDbContext : DbContext
     public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
     public DbSet<PaymentCondition> PaymentConditions => Set<PaymentCondition>();
     public DbSet<FollowUpRecord> FollowUps => Set<FollowUpRecord>();
+    public DbSet<AgentInstruction> AgentInstructions => Set<AgentInstruction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -156,6 +157,17 @@ public class SalesAdminDbContext : DbContext
                   .WithMany(c => c.FollowUps)
                   .HasForeignKey(f => f.CustomerId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // AgentInstruction
+        modelBuilder.Entity<AgentInstruction>(entity =>
+        {
+            entity.ToTable("agent_instructions");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.WorkflowType).HasMaxLength(50).IsRequired();
+            entity.Property(a => a.AgentRole).HasMaxLength(100).IsRequired();
+            entity.Property(a => a.Instructions).IsRequired();
+            entity.HasIndex(a => new { a.WorkflowType, a.AgentRole }).IsUnique();
         });
     }
 }

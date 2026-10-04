@@ -168,3 +168,11 @@ public sealed record ErrorEnvelope(ErrorBody Error)
 }
 
 public sealed record ErrorBody(string Code, string Message, object? Details = null);
+
+public sealed record ThemeSettingRequest(string Theme);
+
+public sealed record ThemeSettingDto
+{
+    public string Theme { get; init; } = "escuro";
+    public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
+}

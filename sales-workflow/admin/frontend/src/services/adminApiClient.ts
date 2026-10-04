@@ -227,10 +227,32 @@ export const adminApi = {
   deleteFollowUp: (id: string) => request<void>(`/follow-ups/${id}`, { method: 'DELETE' }),
   getCustomerFollowUps: (customerId: string) => request<FollowUpItem[]>(`/customers/${customerId}/follow-ups`),
 
+  // Agent Instructions (Compartilhado & Workflow)
+  listAgentInstructions: (workflowType?: string) => {
+    const q = workflowType ? `?workflowType=${encodeURIComponent(workflowType)}` : '';
+    return request<AgentInstructionItem[]>(`/agent-instructions${q}`);
+  },
+  createAgentInstruction: (data: Partial<AgentInstructionItem>) =>
+    request<AgentInstructionItem>('/agent-instructions', { method: 'POST', body: JSON.stringify(data) }),
+  updateAgentInstruction: (id: string, data: Partial<AgentInstructionItem>) =>
+    request<void>(`/agent-instructions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAgentInstruction: (id: string) =>
+    request<void>(`/agent-instructions/${id}`, { method: 'DELETE' }),
+
   // RAG Search
   searchProductsSemantic: (query: string, top = 5) =>
     request<ProductItem[]>(`/search/products?q=${encodeURIComponent(query)}&top=${top}`),
 };
+
+export interface AgentInstructionItem {
+  id?: string;
+  workflowType: string;
+  agentRole: string;
+  instructions: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface FollowUpItem {
   id: string;

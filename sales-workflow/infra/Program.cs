@@ -25,11 +25,15 @@ public class Program
 
             var salesAdminClient = new SalesAdminClient(configuration.SalesAdminBaseUrl);
 
+            var instructionCache = new InstructionCache(salesAdminClient);
+            await instructionCache.RefreshAsync();
+
             var bffClient = new BffWorkflowClient(
                 configuration,
                 chatClient,
                 salesAdminClient,
-                interactor => WorkflowFactory.BuildSalesWorkflow(chatClient, interactor, salesAdminClient));
+                instructionCache,
+                interactor => WorkflowFactory.BuildSalesWorkflow(chatClient, interactor, salesAdminClient, instructionCache));
 
             await bffClient.StartAsync();
             Console.WriteLine($"[Sales Workflow Worker] Conectado ao BFF em {configuration.BffBaseUrl}");

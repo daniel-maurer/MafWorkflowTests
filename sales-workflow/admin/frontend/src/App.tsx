@@ -20,6 +20,7 @@ import { CustomerListPage } from '@/pages/customers/CustomerListPage';
 import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { PaymentConditionsPage } from '@/pages/payment-conditions/PaymentConditionsPage';
 import { FollowUpListPage } from '@/pages/follow-ups/FollowUpListPage';
+import { AgentInstructionsPage } from '@/pages/instructions/AgentInstructionsPage';
 
 function TokenWire() {
   const auth = useAuth();
@@ -145,6 +146,15 @@ export default function App() {
             element={
               <RequireAuth>
                 <PaymentConditionsPage />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/instructions"
+            element={
+              <RequireAuth>
+                <AgentInstructionsPage />
               </RequireAuth>
             }
           />

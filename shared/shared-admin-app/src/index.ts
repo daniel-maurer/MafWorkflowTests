@@ -13,6 +13,22 @@ export { ContextPanel } from './components/workflow/ContextPanel';
 export { CustomerIdentificationModal } from './components/workflow/CustomerIdentificationModal';
 export type { CustomerData } from './components/workflow/CustomerIdentificationModal';
 
+// Modern UI Primitives
+export { Modal } from './components/ui/Modal';
+export type { ModalProps } from './components/ui/Modal';
+export { Input } from './components/ui/Input';
+export type { InputProps } from './components/ui/Input';
+export { Select } from './components/ui/Select';
+export type { SelectProps, SelectOption } from './components/ui/Select';
+export { Textarea } from './components/ui/Textarea';
+export type { TextareaProps } from './components/ui/Textarea';
+export { Switch } from './components/ui/Switch';
+export type { SwitchProps } from './components/ui/Switch';
+export { Pagination } from './components/ui/Pagination';
+export type { PaginationProps } from './components/ui/Pagination';
+export { Card, FormField } from './components/ui/Card';
+export type { CardProps, FormFieldProps } from './components/ui/Card';
+
 // Pages
 export { LoginPage } from './pages/LoginPage';
 export { WorkflowRunPage } from './pages/WorkflowRunPage';

@@ -15,6 +15,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private readonly WorkflowConfiguration _configuration;
     private readonly IChatClient _chatClient;
     private readonly SalesAdminClient _salesAdminClient;
+    private readonly InstructionCache _instructionCache;
     private readonly Func<IUserInteractor, Workflow> _workflowFactory;
     private readonly HubConnection _connection;
     private readonly ConcurrentDictionary<string, WorkflowSession> _sessions = new();
@@ -24,11 +25,13 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         WorkflowConfiguration configuration,
         IChatClient chatClient,
         SalesAdminClient salesAdminClient,
+        InstructionCache instructionCache,
         Func<IUserInteractor, Workflow> workflowFactory)
     {
         _configuration = configuration;
         _chatClient = chatClient;
         _salesAdminClient = salesAdminClient;
+        _instructionCache = instructionCache;
         _workflowFactory = workflowFactory;
 
         _connection = new HubConnectionBuilder()
@@ -466,7 +469,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         var interactor = new SessionWorkflowInteractor(sessionId, this);
         Workflow workflow = workflowId switch
         {
-            "sales-assistant" => WorkflowFactory.BuildSalesWorkflow(_chatClient, interactor, _salesAdminClient),
+            "sales-assistant" => WorkflowFactory.BuildSalesWorkflow(_chatClient, interactor, _salesAdminClient, _instructionCache),
             _ => _workflowFactory(interactor)
         };
         return new WorkflowSession(sessionId, workflow, this, interactor);

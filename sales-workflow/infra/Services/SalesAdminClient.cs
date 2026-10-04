@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using MafWorkflow.Shared.Contracts;
 using SalesWorkflow.Models;
 
 namespace SalesWorkflow.Services;
@@ -20,6 +21,26 @@ public sealed class SalesAdminClient : IDisposable
             BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/")
         };
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "mock-token:sales-workflow-worker");
+    }
+
+    // ── Configurações de Agentes ──
+
+    public async Task<List<AgentInstructionDto>> GetAgentInstructionsAsync(string? workflowType = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = string.IsNullOrWhiteSpace(workflowType) ? "agent-instructions" : $"agent-instructions?workflowType={Uri.EscapeDataString(workflowType)}";
+            var response = await _http.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode) return [];
+
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<List<AgentInstructionDto>>(json, JsonOptions) ?? [];
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SalesAdminClient] Erro ao buscar instruções de agente: {ex.Message}");
+            return [];
+        }
     }
 
     // ── Produtos ──

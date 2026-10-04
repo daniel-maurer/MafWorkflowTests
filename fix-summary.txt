@@ -1,0 +1,1 @@
+Resumo: A IA não estava filtrando e o limite do vector DB foi aumentado.

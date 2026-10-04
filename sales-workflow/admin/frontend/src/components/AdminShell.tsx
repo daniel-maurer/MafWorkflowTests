@@ -18,6 +18,7 @@ export function AdminShell({ children, title, subtitle, action }: AdminShellProp
     { to: '/customers', label: 'Clientes (Compartilhado)', icon: 'user' },
     { to: '/follow-ups', label: 'Follow-Ups & Retornos', icon: 'message-square' },
     { to: '/payment-conditions', label: 'Condições de Pagamento', icon: 'credit-card' },
+    { to: '/instructions', label: 'Instruções dos Agentes', icon: 'cpu' },
   ];
 
   return (

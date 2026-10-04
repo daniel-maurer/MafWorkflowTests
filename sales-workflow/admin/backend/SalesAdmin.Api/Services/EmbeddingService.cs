@@ -65,16 +65,33 @@ public sealed class EmbeddingService
     private static Vector GenerateDeterministicVector(string text)
     {
         var vector = new float[EmbeddingDimensions];
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(text));
-        var seed = BitConverter.ToInt32(hash, 0);
-        var random = new Random(seed);
+        if (string.IsNullOrWhiteSpace(text)) return new Vector(vector);
+
+        var tokens = text.ToLowerInvariant()
+            .Split(new[] { ' ', '\t', '\r', '\n', '.', ',', '!', '?', ';', ':', '-', '_', '/', '(', ')' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => t.Length > 1)
+            .Distinct()
+            .ToArray();
+
+        if (tokens.Length == 0) return new Vector(vector);
+
+        foreach (var token in tokens)
+        {
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+            var seed = BitConverter.ToInt32(hash, 0);
+            var random = new Random(seed);
+
+            for (int i = 0; i < EmbeddingDimensions; i++)
+            {
+                var val = (float)(random.NextDouble() * 2.0 - 1.0);
+                vector[i] += val;
+            }
+        }
 
         double sumSquares = 0;
         for (int i = 0; i < EmbeddingDimensions; i++)
         {
-            var val = (float)(random.NextDouble() * 2 - 1);
-            vector[i] = val;
-            sumSquares += val * val;
+            sumSquares += vector[i] * vector[i];
         }
 
         var norm = (float)Math.Sqrt(sumSquares);

@@ -13,7 +13,8 @@ public static class WorkflowFactory
     internal static Workflow BuildSalesWorkflow(
         IChatClient chatClient,
         IUserInteractor interactor,
-        SalesAdminClient salesAdminClient)
+        SalesAdminClient salesAdminClient,
+        InstructionCache instructionCache)
     {
         RequestPort userMessagePort = RequestPort.Create<string, string>("UserMessage");
 
@@ -25,13 +26,13 @@ public static class WorkflowFactory
         FollowUpTools.Interactor = interactor as ISalesUserInteractor;
 
         // === Agentes ===
-        var intentAgent = IntentAgentFactory.GetIntentAgent(chatClient);
-        var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient, catalogTools);
-        var salesAdvisorAgent = SalesAdvisorAgentFactory.GetSalesAdvisorAgent(chatClient, catalogTools);
-        var decisionAgent = SalesAdvisorAgentFactory.GetCustomerDecisionAgent(chatClient);
-        var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient, quoteTools);
-        var followUpAgent = FollowUpAgentFactory.GetFollowUpAgent(chatClient, cartTools);
-        var salesRecordAgent = SalesRecordAgentFactory.GetSalesRecordAgent(chatClient);
+        var intentAgent = IntentAgentFactory.GetIntentAgent(chatClient, instructionCache);
+        var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient, catalogTools, instructionCache);
+        var salesAdvisorAgent = SalesAdvisorAgentFactory.GetSalesAdvisorAgent(chatClient, catalogTools, instructionCache);
+        var decisionAgent = SalesAdvisorAgentFactory.GetCustomerDecisionAgent(chatClient, instructionCache);
+        var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient, quoteTools, instructionCache);
+        var followUpAgent = FollowUpAgentFactory.GetFollowUpAgent(chatClient, cartTools, instructionCache);
+        var salesRecordAgent = SalesRecordAgentFactory.GetSalesRecordAgent(chatClient, instructionCache);
 
         // === Executores ===
         var intentExecutor = new IntentExecutor(intentAgent, interactor, salesAdminClient);
