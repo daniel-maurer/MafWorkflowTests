@@ -18,6 +18,21 @@ public sealed class CatalogResult
 
     [JsonPropertyName("original_intent")]
     public string OriginalIntent { get; set; } = string.Empty;
+
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; set; } = "checkout";
+
+    [JsonPropertyName("new_search_query")]
+    public string? NewSearchQuery { get; set; }
+
+    [JsonPropertyName("customer_wants_quote")]
+    public bool CustomerWantsQuote { get; set; }
+
+    [JsonPropertyName("selected_products")]
+    public List<ProductInfo> SelectedProducts { get; set; } = [];
+
+    [JsonPropertyName("customer_inquiry")]
+    public string? CustomerInquiry { get; set; }
 }
 
 public sealed class ProductInfo

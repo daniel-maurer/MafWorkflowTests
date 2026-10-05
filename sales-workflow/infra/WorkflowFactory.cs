@@ -28,7 +28,6 @@ public static class WorkflowFactory
         // === Agentes ===
         var intentAgent = IntentAgentFactory.GetIntentAgent(chatClient, instructionCache);
         var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient, catalogTools, instructionCache);
-        var salesAdvisorAgent = SalesAdvisorAgentFactory.GetSalesAdvisorAgent(chatClient, catalogTools, instructionCache);
         var decisionAgent = SalesAdvisorAgentFactory.GetCustomerDecisionAgent(chatClient, instructionCache);
         var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient, quoteTools, instructionCache);
         var followUpAgent = FollowUpAgentFactory.GetFollowUpAgent(chatClient, cartTools, instructionCache);
@@ -36,8 +35,7 @@ public static class WorkflowFactory
 
         // === Executores ===
         var intentExecutor = new IntentExecutor(intentAgent, interactor, salesAdminClient);
-        var catalogExecutor = new CatalogExecutor(catalogAgent, interactor, catalogTools);
-        var salesAdvisorExecutor = new SalesAdvisorExecutor(salesAdvisorAgent, decisionAgent, interactor, salesAdminClient, catalogTools);
+        var catalogExecutor = new CatalogExecutor(catalogAgent, decisionAgent, interactor, catalogTools, salesAdminClient);
         var loopSearchAdapter = new LoopSearchAdapterExecutor(interactor);
         var quoteExecutor = new QuoteExecutor(quoteAgent, interactor, salesAdminClient);
         var followUpExecutor = new FollowUpExecutor(followUpAgent, interactor);
@@ -45,46 +43,45 @@ public static class WorkflowFactory
         var salesRecordExecutor = new SalesRecordExecutor(salesRecordAgent, interactor);
 
         return new WorkflowBuilder(userMessagePort)
-            // Superstep 1 -> Superstep 2
+            // Superstep 1: Triagem de Intenção e Cliente
             .AddEdge(userMessagePort, intentExecutor)
             .AddEdge(intentExecutor, catalogExecutor)
-            // Superstep 2 -> Superstep 3 (Condicional)
-            .AddEdge(catalogExecutor, salesAdvisorExecutor, condition: GetProductFoundCondition())
-            .AddEdge(catalogExecutor, humanSellerExecutor, condition: GetNeedsHumanCondition())
-            // Loop: Se o cliente quiser buscar mais produtos ou complementar o carrinho
-            .AddEdge(salesAdvisorExecutor, loopSearchAdapter, condition: GetNeedsMoreSearchCondition())
+
+            // Superstep 2: Catálogo -> Decisão Direta do Cliente
+            .AddEdge(catalogExecutor, quoteExecutor, condition: GetWantsQuoteCondition())
+            .AddEdge(catalogExecutor, loopSearchAdapter, condition: GetNeedsMoreSearchCondition())
             .AddEdge(loopSearchAdapter, catalogExecutor)
-            // Superstep 3 -> Superstep 4 (Condicional)
-            .AddEdge(salesAdvisorExecutor, quoteExecutor, condition: GetWantsQuoteCondition())
-            .AddEdge(salesAdvisorExecutor, salesRecordExecutor, condition: GetNoQuoteCondition())
-            // Superstep 4 -> Superstep 5
+            .AddEdge(catalogExecutor, salesRecordExecutor, condition: GetNoQuoteCondition())
+            .AddEdge(catalogExecutor, humanSellerExecutor, condition: GetNeedsHumanCondition())
+
+            // Superstep 3: Orçamento -> Follow-Up
             .AddEdge(quoteExecutor, followUpExecutor)
-            // Superstep 5/3 -> Convergência para SalesRecordExecutor
+
+            // Superstep 4: Finalização e Registro Analítico
             .AddEdge(followUpExecutor, salesRecordExecutor)
             .AddEdge(humanSellerExecutor, salesRecordExecutor)
             .Build();
     }
 
-    private static Func<object?, bool> GetProductFoundCondition()
-        => result => result is CatalogResult cr && cr.HasResults && !cr.RequiresHuman;
+    private static Func<object?, bool> GetNeedsMoreSearchCondition()
+        => result => result is CatalogResult cr && 
+                     (string.Equals(cr.NextAction, "search_more", StringComparison.OrdinalIgnoreCase) || 
+                      !string.IsNullOrWhiteSpace(cr.NewSearchQuery));
+
+    private static Func<object?, bool> GetWantsQuoteCondition()
+        => result => result is CatalogResult cr && 
+                     cr.HasResults &&
+                     !string.Equals(cr.NextAction, "search_more", StringComparison.OrdinalIgnoreCase) &&
+                     string.IsNullOrWhiteSpace(cr.NewSearchQuery) &&
+                     (string.Equals(cr.NextAction, "checkout", StringComparison.OrdinalIgnoreCase) || cr.CustomerWantsQuote);
+
+    private static Func<object?, bool> GetNoQuoteCondition()
+        => result => result is CatalogResult cr && 
+                     cr.HasResults &&
+                     !string.Equals(cr.NextAction, "search_more", StringComparison.OrdinalIgnoreCase) &&
+                     string.IsNullOrWhiteSpace(cr.NewSearchQuery) &&
+                     (string.Equals(cr.NextAction, "decline", StringComparison.OrdinalIgnoreCase) || !cr.CustomerWantsQuote);
 
     private static Func<object?, bool> GetNeedsHumanCondition()
         => result => result is CatalogResult cr && (!cr.HasResults || cr.RequiresHuman);
-
-    private static Func<object?, bool> GetNeedsMoreSearchCondition()
-        => result => result is SalesAdviceResult sar && 
-                     (string.Equals(sar.NextAction, "search_more", StringComparison.OrdinalIgnoreCase) || 
-                      !string.IsNullOrWhiteSpace(sar.NewSearchQuery));
-
-    private static Func<object?, bool> GetWantsQuoteCondition()
-        => result => result is SalesAdviceResult sar && 
-                     !string.Equals(sar.NextAction, "search_more", StringComparison.OrdinalIgnoreCase) &&
-                     string.IsNullOrWhiteSpace(sar.NewSearchQuery) &&
-                     (string.Equals(sar.NextAction, "checkout", StringComparison.OrdinalIgnoreCase) || sar.CustomerWantsQuote);
-
-    private static Func<object?, bool> GetNoQuoteCondition()
-        => result => result is SalesAdviceResult sar && 
-                     !string.Equals(sar.NextAction, "search_more", StringComparison.OrdinalIgnoreCase) &&
-                     string.IsNullOrWhiteSpace(sar.NewSearchQuery) &&
-                     (string.Equals(sar.NextAction, "decline", StringComparison.OrdinalIgnoreCase) || !sar.CustomerWantsQuote);
 }

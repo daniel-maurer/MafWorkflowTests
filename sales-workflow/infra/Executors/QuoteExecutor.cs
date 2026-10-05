@@ -8,7 +8,7 @@ using SalesWorkflow.Utilities;
 
 namespace SalesWorkflow.Executors;
 
-internal sealed class QuoteExecutor : Executor<SalesAdviceResult, QuoteResult>
+internal sealed class QuoteExecutor : Executor<CatalogResult, QuoteResult>
 {
     private readonly AIAgent _quoteAgent;
     private readonly IUserInteractor _userInteractor;
@@ -25,7 +25,7 @@ internal sealed class QuoteExecutor : Executor<SalesAdviceResult, QuoteResult>
     }
 
     public override async ValueTask<QuoteResult> HandleAsync(
-        SalesAdviceResult adviceResult,
+        CatalogResult catalogResult,
         IWorkflowContext context,
         CancellationToken cancellationToken = default)
     {
@@ -42,9 +42,9 @@ internal sealed class QuoteExecutor : Executor<SalesAdviceResult, QuoteResult>
             cancellationToken);
 
         var cart = await context.ReadStateAsync<List<ProductInfo>>(Constants.CartItemsKey, Constants.SalesStateScope) ?? [];
-        var allProductsToQuote = (adviceResult.SelectedProducts != null && adviceResult.SelectedProducts.Count > 0)
-            ? adviceResult.SelectedProducts
-            : cart;
+        var allProductsToQuote = (catalogResult.SelectedProducts != null && catalogResult.SelectedProducts.Count > 0)
+            ? catalogResult.SelectedProducts
+            : (catalogResult.Products != null && catalogResult.Products.Count > 0 ? catalogResult.Products : cart);
 
         if (allProductsToQuote.Count == 0)
         {
@@ -57,8 +57,6 @@ internal sealed class QuoteExecutor : Executor<SalesAdviceResult, QuoteResult>
 {JsonSerializer.Serialize(allProductsToQuote.Select(p => new { p.Sku, p.Name, p.Price }))}
 
 Condições especiais aplicáveis:
-- Desconto especial acordado: {adviceResult.DiscountPercent}%
-- Nome do combo/kit: {(string.IsNullOrWhiteSpace(adviceResult.AcceptedKitName) ? "Itens avulsos selecionados" : adviceResult.AcceptedKitName)}
 - Formas de pagamento ativas: {JsonSerializer.Serialize(conditions.Where(c => c.Active))}
 
 INSTRUÇÕES:
@@ -73,9 +71,7 @@ Responda SEMPRE estritamente no esquema JSON de QuoteResult.";
         {
             Logger.LogWarning("[QuoteExecutor] Falha na desserialização de QuoteResult, montando orçamento padrão.");
             var subtotal = allProductsToQuote.Sum(p => p.Price);
-            var discount = adviceResult.DiscountPercent > 0
-                ? Math.Round(subtotal * (adviceResult.DiscountPercent / 100m), 2)
-                : 0m;
+            var discount = allProductsToQuote.Count >= 2 ? Math.Round(subtotal * 0.10m, 2) : 0m;
             var total = Math.Max(0, subtotal - discount);
             var quoteId = $"QT-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}";
 
@@ -101,7 +97,6 @@ Responda SEMPRE estritamente no esquema JSON de QuoteResult.";
         }
         else
         {
-            // Garante consistência rigorosa dos itens com os produtos aceitos pelo cliente
             var approvedSkus = allProductsToQuote.Select(p => p.Sku).ToHashSet(StringComparer.OrdinalIgnoreCase);
             if (quoteResult.Items == null || quoteResult.Items.Count == 0 || quoteResult.Items.Any(i => !approvedSkus.Contains(i.Sku)) || quoteResult.Items.Count != allProductsToQuote.Count)
             {
@@ -115,22 +110,11 @@ Responda SEMPRE estritamente no esquema JSON de QuoteResult.";
                     Total = p.Price
                 }).ToList();
                 quoteResult.Subtotal = quoteResult.Items.Sum(i => i.Total);
-                if (adviceResult.DiscountPercent > 0)
+                if (allProductsToQuote.Count >= 2 && quoteResult.Discount == 0)
                 {
-                    quoteResult.Discount = Math.Round(quoteResult.Subtotal * (adviceResult.DiscountPercent / 100m), 2);
+                    quoteResult.Discount = Math.Round(quoteResult.Subtotal * 0.10m, 2);
                 }
                 quoteResult.Total = Math.Max(0, quoteResult.Subtotal - quoteResult.Discount);
-                quoteResult.PaymentConditions = PaymentConditionFormatter.Format(conditions, quoteResult.Total);
-            }
-            else if (adviceResult.DiscountPercent > 0 && quoteResult.Discount == 0)
-            {
-                var discountAmount = Math.Round(quoteResult.Subtotal * (adviceResult.DiscountPercent / 100m), 2);
-                quoteResult.Discount = discountAmount;
-                quoteResult.Total = Math.Max(0, quoteResult.Subtotal - discountAmount);
-                quoteResult.PaymentConditions = PaymentConditionFormatter.Format(conditions, quoteResult.Total);
-            }
-            else if (string.IsNullOrWhiteSpace(quoteResult.PaymentConditions) || quoteResult.PaymentConditions.Contains("5% adicional"))
-            {
                 quoteResult.PaymentConditions = PaymentConditionFormatter.Format(conditions, quoteResult.Total);
             }
         }
@@ -227,15 +211,50 @@ Responda SEMPRE estritamente no esquema JSON de QuoteResult.";
             .Select(p => new MafImagePayload { Url = p.ImageUrl, Alt = p.Name, Sku = p.Sku })
             .ToList();
 
-        var quoteMsg = $"{quoteResult.MessageForUser}\n\n**Condições de Pagamento:**\n{quoteResult.PaymentConditions}";
+        var itemsBreakdown = string.Join("\n", allProductsToQuote.Select(p =>
+            $"• **{p.Name}** — R$ {p.Price:N2} (Cor: {p.Color ?? "N/A"}, Tam: {p.Size ?? "N/A"})"));
 
-        await _userInteractor.SendUserResponseAsync(
-            quoteMsg,
+        var quoteSummary = $@"📋 **Itens do seu Orçamento ({quoteResult.QuoteId})**:
+{itemsBreakdown}
+
+**Resumo:**
+Subtotal: R$ {quoteResult.Subtotal:N2}{(quoteResult.Discount > 0 ? $" | Desconto: -R$ {quoteResult.Discount:N2}" : "")} | **Total: R$ {quoteResult.Total:N2}**";
+
+        var quoteMsg = $"{quoteSummary}\n\n{quoteResult.MessageForUser}\n\n**Condições de Pagamento:**\n{quoteResult.PaymentConditions}";
+
+        // Apresenta a proposta e aguarda confirmação ou dúvidas do cliente
+        var userClosingReply = await _userInteractor.GetUserResponseAsync(
+            $"{quoteMsg}\n\nVocê tem alguma dúvida sobre os itens, valores ou formas de pagamento, ou deseja confirmar o pedido?",
             "quote",
             tools: quoteTools,
             audience: MessageAudience.Both,
             images: quoteImages.Count > 0 ? quoteImages : null,
             cancellationToken: cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(userClosingReply))
+        {
+            var lower = userClosingReply.Trim().ToLowerInvariant();
+            if (lower.Contains("preço") || lower.Contains("preco") || lower.Contains("cada") || lower.Contains("quanto"))
+            {
+                var priceAnswer = "Aqui está o preço individual de cada produto do seu pedido:\n\n" +
+                    string.Join("\n", allProductsToQuote.Select(p => $"• **{p.Name}** — R$ {p.Price:N2}")) +
+                    $"\n\nTotal: R$ {quoteResult.Total:N2}. Fico à disposição se precisar de qualquer outra informação!";
+
+                await _userInteractor.SendUserResponseAsync(
+                    priceAnswer,
+                    "quote",
+                    audience: MessageAudience.Both,
+                    cancellationToken: cancellationToken);
+            }
+            else if (!lower.Contains("não") && !lower.Contains("nao") && !lower.Contains("cancela"))
+            {
+                await _userInteractor.SendUserResponseAsync(
+                    "Perfeito! Seu pedido foi confirmado com sucesso. Agradecemos muito pela preferência e estamos à disposição!",
+                    "quote",
+                    audience: MessageAudience.Both,
+                    cancellationToken: cancellationToken);
+            }
+        }
 
         await context.YieldOutputAsync(quoteResult, cancellationToken);
         return quoteResult;

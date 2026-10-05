@@ -186,20 +186,34 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
     private async Task HandleUserMessageAsync(MafUserMessageCommand command)
     {
-        if (!_sessions.TryGetValue(command.SessionId, out var session))
+        if (!_sessions.TryGetValue(command.SessionId, out var session) || session.IsCompleted)
         {
-            Logger.LogInfo($"[SessionRecovery] Sessão {command.SessionId} não encontrada em memória (reconexão ou worker reiniciado). Inicializando sessão sob demanda...");
+            CustomerInfo? existingCustomer = session?.Interactor.CurrentCustomer;
+            if (session != null)
+            {
+                _sessions.TryRemove(command.SessionId, out _);
+                await session.DisposeAsync();
+            }
+
+            Logger.LogInfo($"[SessionRecovery] Sessão {command.SessionId} iniciando nova execução para: '{command.Text}'");
             session = _sessions.GetOrAdd(command.SessionId, id => CreateSession(id, "sales-assistant"));
+            if (existingCustomer != null)
+            {
+                session.Interactor.CurrentCustomer = existingCustomer;
+            }
             await session.StartAsync(command.Text);
 
-            await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
-            await PublishTraceAsync(command.SessionId, "Fluxo comercial MAF iniciado sob demanda.");
+            if (!command.Text.StartsWith("__START_"))
+            {
+                await PublishMessageAsync(command.SessionId, CreateUserMessage(command.Text));
+            }
+            await PublishTraceAsync(command.SessionId, "Fluxo comercial MAF reiniciado para responder ao cliente.");
             await PublishAgentStateAsync(command.SessionId, "intent", "active", "Running");
             await PublishContextAsync(command.SessionId, new MafContextPayload
             {
                 Status = "analyzing-intent",
                 ChatTitle = "Sales Assistant",
-                ChatSubtitle = "Identificando intenção e catálogo...",
+                ChatSubtitle = existingCustomer != null ? $"Cliente: {existingCustomer.Name}" : "Identificando intenção e catálogo...",
                 ActiveAgentId = "intent",
                 HumanMode = false
             });
@@ -544,6 +558,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         }
 
         public SessionWorkflowInteractor Interactor => _userInteractor;
+        public bool IsCompleted => _runnerTask.IsCompleted;
     }
 
     private sealed class SessionWorkflowInteractor : ISalesUserInteractor

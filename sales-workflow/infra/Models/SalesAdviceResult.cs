@@ -63,6 +63,9 @@ public sealed class CustomerChoiceEvaluation
 
     [JsonPropertyName("message_for_user")]
     public string MessageForUser { get; set; } = string.Empty;
+
+    [JsonPropertyName("target_sku")]
+    public string? TargetSku { get; set; }
 }
 
 public sealed class KitSuggestion

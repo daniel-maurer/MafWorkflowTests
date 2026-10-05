@@ -26,7 +26,19 @@ public class Program
             var salesAdminClient = new SalesAdminClient(configuration.SalesAdminBaseUrl);
 
             var instructionCache = new InstructionCache(salesAdminClient);
-            await instructionCache.RefreshAsync();
+            for (int i = 1; i <= 15; i++)
+            {
+                try
+                {
+                    await instructionCache.RefreshAsync();
+                    break;
+                }
+                catch (Exception ex) when (i < 15)
+                {
+                    Console.WriteLine($"[Sales Workflow Worker] Aguardando Sales Admin API ({configuration.SalesAdminBaseUrl})... tentativa {i}/15: {ex.Message}");
+                    await Task.Delay(2000);
+                }
+            }
 
             var bffClient = new BffWorkflowClient(
                 configuration,
@@ -35,7 +47,20 @@ public class Program
                 instructionCache,
                 interactor => WorkflowFactory.BuildSalesWorkflow(chatClient, interactor, salesAdminClient, instructionCache));
 
-            await bffClient.StartAsync();
+            for (int i = 1; i <= 15; i++)
+            {
+                try
+                {
+                    await bffClient.StartAsync();
+                    break;
+                }
+                catch (Exception ex) when (i < 15)
+                {
+                    Console.WriteLine($"[Sales Workflow Worker] Aguardando BFF Hub ({configuration.BffBaseUrl})... tentativa {i}/15: {ex.Message}");
+                    await Task.Delay(2000);
+                }
+            }
+
             Console.WriteLine($"[Sales Workflow Worker] Conectado ao BFF em {configuration.BffBaseUrl}");
             Console.WriteLine($"[Sales Workflow Worker] Registrado para o workflow: 'sales-assistant'");
             await Task.Delay(Timeout.Infinite);
