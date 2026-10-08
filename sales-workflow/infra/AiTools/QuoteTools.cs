@@ -56,34 +56,76 @@ public sealed class QuoteTools
             }
         }
 
-        // 2. Validação de Cupom Real na Admin API
+        // 2. Validação de Campanhas Ativas e Cupom Real na Admin API
         decimal discount = 0;
-        string? couponName = null;
+        string? discountName = null;
+        bool freeShipping = false;
 
+        // Verifica campanhas ativas
+        var activeCampaigns = await _client.GetActiveCampaignsAsync(cancellationToken);
+        if (activeCampaigns.Any())
+        {
+            var qtyTotal = items.Sum(i => i.Quantity);
+            var bestCampaign = activeCampaigns.OrderByDescending(c => 
+                qtyTotal >= 3 ? c.Discount3PlusItems :
+                qtyTotal == 2 ? c.Discount2Items :
+                qtyTotal == 1 ? c.Discount1Item :
+                c.GlobalDiscountPercent).FirstOrDefault();
+
+            if (bestCampaign != null)
+            {
+                decimal campaignDiscountPercent = 0;
+                
+                if (qtyTotal >= 3 && bestCampaign.Discount3PlusItems > 0) campaignDiscountPercent = bestCampaign.Discount3PlusItems;
+                else if (qtyTotal == 2 && bestCampaign.Discount2Items > 0) campaignDiscountPercent = bestCampaign.Discount2Items;
+                else if (qtyTotal == 1 && bestCampaign.Discount1Item > 0) campaignDiscountPercent = bestCampaign.Discount1Item;
+                else if (bestCampaign.GlobalDiscountPercent > 0) campaignDiscountPercent = bestCampaign.GlobalDiscountPercent;
+
+                if (campaignDiscountPercent > 0)
+                {
+                    discount = Math.Round(subtotal * (campaignDiscountPercent / 100m), 2);
+                    discountName = $"Campanha: {bestCampaign.Name} ({campaignDiscountPercent}%)";
+                }
+
+                if (bestCampaign.FreeShipping)
+                {
+                    freeShipping = true;
+                    discountName = (discountName != null ? discountName + " + " : "") + "Frete Grátis";
+                }
+            }
+        }
+
+        // Se o usuário mandou um cupom, vemos se ele é melhor que a campanha
         if (!string.IsNullOrWhiteSpace(couponCode))
         {
             var coupon = await _client.ValidateCouponAsync(couponCode, cancellationToken);
             if (coupon is not null && coupon.IsValid)
             {
-                couponName = coupon.Name;
+                decimal couponDiscountAmount = 0;
                 if (coupon.DiscountType.Equals("percentage", StringComparison.OrdinalIgnoreCase))
                 {
-                    discount = Math.Round(subtotal * (coupon.DiscountValue / 100m), 2);
+                    couponDiscountAmount = Math.Round(subtotal * (coupon.DiscountValue / 100m), 2);
                 }
                 else
                 {
-                    discount = coupon.DiscountValue;
+                    couponDiscountAmount = coupon.DiscountValue;
                 }
 
                 if (coupon.MinOrderValue.HasValue && subtotal < coupon.MinOrderValue.Value)
                 {
                     Logger.LogInfo($"[TOOL] Cupom '{couponCode}' requer pedido mínimo de R$ {coupon.MinOrderValue.Value:N2}. Desconto não aplicado.");
-                    discount = 0;
+                    couponDiscountAmount = 0;
                 }
 
-                if (coupon.MaxDiscountAmount.HasValue && discount > coupon.MaxDiscountAmount.Value)
+                if (coupon.MaxDiscountAmount.HasValue && couponDiscountAmount > coupon.MaxDiscountAmount.Value)
                 {
-                    discount = coupon.MaxDiscountAmount.Value;
+                    couponDiscountAmount = coupon.MaxDiscountAmount.Value;
+                }
+
+                if (couponDiscountAmount > discount)
+                {
+                    discount = couponDiscountAmount;
+                    discountName = $"Cupom: {coupon.Name}";
                 }
             }
             else
@@ -108,8 +150,8 @@ public sealed class QuoteTools
             Currency = "BRL",
             ValidUntil = DateTimeOffset.UtcNow.AddDays(7),
             PaymentConditions = paymentConditionsText,
-            MessageForUser = discount > 0
-                ? $"Orçamento {quoteId} gerado! Subtotal: R$ {subtotal:N2}, Desconto ({couponName ?? couponCode}): -R$ {discount:N2}. Total: R$ {totalFinal:N2}."
+            MessageForUser = discount > 0 || freeShipping
+                ? $"Orçamento {quoteId} gerado! Subtotal: R$ {subtotal:N2}, Benefício ({discountName ?? ""}): -R$ {discount:N2}. Total: R$ {totalFinal:N2}."
                 : $"Orçamento {quoteId} gerado com sucesso! Total: R$ {totalFinal:N2} com validade de 7 dias.",
             CustomerAccepted = false
         };

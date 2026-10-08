@@ -8,7 +8,7 @@ namespace SalesWorkflow.AgentFactories;
 
 public static class QuoteAgentFactory
 {
-    public static ChatClientAgent GetQuoteAgent(IChatClient chatClient, QuoteTools quoteTools, InstructionCache instructionCache)
+    public static ChatClientAgent GetQuoteAgent(IChatClient chatClient, QuoteTools quoteTools, StoreTools storeTools, CampaignTools campaignTools, InstructionCache instructionCache)
     {
         return new(chatClient, new ChatClientAgentOptions(
             instructions: instructionCache.GetInstruction("sales", "QuoteAgent", ""),
@@ -23,7 +23,10 @@ public static class QuoteAgentFactory
                     AIFunctionFactory.Create(quoteTools.GenerateQuote),
                     AIFunctionFactory.Create(quoteTools.ApplyDiscount),
                     AIFunctionFactory.Create(quoteTools.GetPaymentConditions),
-                    AIFunctionFactory.Create(QuoteTools.SendQuote)
+                    AIFunctionFactory.Create(QuoteTools.SendQuote),
+                    AIFunctionFactory.Create(storeTools.GetDeliveryMethods),
+                    AIFunctionFactory.Create(storeTools.GetStoreInfo),
+                    AIFunctionFactory.Create(campaignTools.GetActiveCampaigns)
                 ]
             }
         });

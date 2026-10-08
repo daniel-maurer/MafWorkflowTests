@@ -163,25 +163,36 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
 
         var startMsg = !string.IsNullOrWhiteSpace(command.InitialMessage)
             ? command.InitialMessage
-            : (customer == null ? "__START_NEW_CUSTOMER__" : "__START_EXISTING_CUSTOMER__");
+            : string.Empty;
 
         await session.StartAsync(startMsg);
 
-        if (!string.IsNullOrWhiteSpace(startMsg) && !startMsg.StartsWith("__START_"))
+        if (!string.IsNullOrWhiteSpace(startMsg))
         {
             await PublishMessageAsync(command.SessionId, CreateUserMessage(startMsg));
+            await PublishTraceAsync(command.SessionId, "Fluxo comercial MAF iniciado com mensagem.");
+            await PublishAgentStateAsync(command.SessionId, "intent", "active", "Running");
+            await PublishContextAsync(command.SessionId, new MafContextPayload
+            {
+                Status = "analyzing-intent",
+                ChatTitle = "Sales Assistant",
+                ChatSubtitle = customer != null ? $"Cliente: {customer.Name}" : "Identificando intenção...",
+                ActiveAgentId = "intent",
+                HumanMode = false
+            });
         }
-
-        await PublishTraceAsync(command.SessionId, "Fluxo comercial MAF iniciado.");
-        await PublishAgentStateAsync(command.SessionId, "intent", "active", "Running");
-        await PublishContextAsync(command.SessionId, new MafContextPayload
+        else
         {
-            Status = "analyzing-intent",
-            ChatTitle = "Sales Assistant",
-            ChatSubtitle = customer != null ? $"Cliente: {customer.Name}" : "Identificando intenção e catálogo...",
-            ActiveAgentId = "intent",
-            HumanMode = false
-        });
+            await PublishTraceAsync(command.SessionId, "Sessão comercial iniciada. Aguardando mensagem do cliente.");
+            await PublishContextAsync(command.SessionId, new MafContextPayload
+            {
+                Status = "idle",
+                ChatTitle = "Sales Assistant",
+                ChatSubtitle = customer != null ? $"Cliente: {customer.Name}" : "Aguardando mensagem...",
+                ActiveAgentId = string.Empty,
+                HumanMode = false
+            });
+        }
     }
 
     private async Task HandleUserMessageAsync(MafUserMessageCommand command)
@@ -333,8 +344,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
             await PublishTraceAsync(command.SessionId, "Sessão reiniciada sem cliente identificado.", "info");
         }
 
-        var startMsg = customer == null ? "__START_NEW_CUSTOMER__" : "__START_EXISTING_CUSTOMER__";
-        await newSession.StartAsync(startMsg);
+        await newSession.StartAsync(string.Empty);
 
         await PublishContextAsync(command.SessionId, new MafContextPayload
         {
@@ -349,6 +359,56 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
     private async Task PublishMessageAsync(string sessionId, MafMessagePayload payload)
     {
         await PublishPublicEventAsync(sessionId, "message", payload);
+        _ = SyncMessageToAdminAsync(sessionId, payload);
+    }
+
+    private async Task SyncMessageToAdminAsync(string sessionId, MafMessagePayload payload)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(payload.Text))
+            {
+                return;
+            }
+
+            if (payload.Text.StartsWith("__START_"))
+            {
+                return;
+            }
+
+            string role = payload.SenderType switch
+            {
+                "user" => "user",
+                "human" => "human",
+                "system" => "system",
+                "agent" => !string.IsNullOrWhiteSpace(payload.AgentId) ? payload.AgentId : "assistant",
+                _ => payload.SenderType ?? "assistant"
+            };
+
+            Guid? customerId = null;
+            if (_sessions.TryGetValue(sessionId, out var session) && session.Interactor.CurrentCustomer != null)
+            {
+                if (Guid.TryParse(session.Interactor.CurrentCustomer.Id, out var cid))
+                {
+                    customerId = cid;
+                }
+            }
+
+            var req = new SyncConversationMessageRequest
+            {
+                SessionId = sessionId,
+                CustomerId = customerId,
+                Role = role,
+                Content = payload.Text,
+                Status = "active"
+            };
+
+            await _salesAdminClient.SyncConversationMessageAsync(req);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning($"[AdminSync] Falha ao sincronizar mensagem para Admin: {ex.Message}");
+        }
     }
 
     private async Task PublishTraceAsync(string sessionId, string title, string level = "info")
@@ -454,7 +514,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
                 Ok = tool.Ok
             }).ToArray() ?? Array.Empty<MafToolCallPayload>(),
             CreatedAt = DateTime.UtcNow,
-            SplitMirror = false,
+            SplitMirror = true,
             Audience = audience,
             Images = images,
         };
@@ -567,6 +627,7 @@ internal sealed class BffWorkflowClient : IAsyncDisposable
         private readonly BffWorkflowClient _parent;
         private readonly Channel<string> _incomingMessages = Channel.CreateUnbounded<string>();
 
+        public string SessionId => _sessionId;
         public CustomerInfo? CurrentCustomer { get; set; }
 
         public SessionWorkflowInteractor(string sessionId, BffWorkflowClient parent)

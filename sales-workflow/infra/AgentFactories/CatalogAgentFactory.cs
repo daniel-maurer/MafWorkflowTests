@@ -8,7 +8,7 @@ namespace SalesWorkflow.AgentFactories;
 
 public static class CatalogAgentFactory
 {
-    public static ChatClientAgent GetCatalogAgent(IChatClient chatClient, CatalogTools catalogTools, InstructionCache instructionCache)
+    public static ChatClientAgent GetCatalogAgent(IChatClient chatClient, CatalogTools catalogTools, StoreTools storeTools, CampaignTools campaignTools, InstructionCache instructionCache)
     {
         return new(chatClient, new ChatClientAgentOptions(
             instructions: instructionCache.GetInstruction("sales", "CatalogAgent", ""),
@@ -20,7 +20,11 @@ public static class CatalogAgentFactory
                     AIJsonUtilities.CreateJsonSchema(typeof(CatalogResult))),
                 Tools =
                 [
-                    AIFunctionFactory.Create(catalogTools.SearchProducts)
+                    AIFunctionFactory.Create(catalogTools.SearchProducts),
+                    AIFunctionFactory.Create(catalogTools.GetCategories),
+                    AIFunctionFactory.Create(storeTools.GetDeliveryMethods),
+                    AIFunctionFactory.Create(storeTools.GetStoreInfo),
+                    AIFunctionFactory.Create(campaignTools.GetActiveCampaigns)
                 ]
             }
         });

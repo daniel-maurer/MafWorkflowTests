@@ -200,7 +200,7 @@ public static class CustomerEndpoints
                 IsDefault = dto.IsDefault || customer.Addresses.Count == 0
             };
 
-            customer.Addresses.Add(address);
+            db.CustomerAddresses.Add(address);
             await db.SaveChangesAsync(ct);
             return Results.Created($"/api/customers/{id}/addresses/{address.Id}", address);
         });

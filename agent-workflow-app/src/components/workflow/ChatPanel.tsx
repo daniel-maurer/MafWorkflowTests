@@ -275,7 +275,7 @@ export function ChatPanel({
               </div>
               <div className="wf-split-msgs" ref={userRef} data-testid="msgs-user">
                 {snapshot.messages
-                  .filter((m) => (m.splitMirror || m.type === 'system') && isVisibleTo(m, 'client'))
+                  .filter((m) => isVisibleTo(m, 'client'))
                   .map((m) => (
                     <MessageRow key={`u-${m.id}`} message={mirrorForUserPane(m)} />
                   ))}
@@ -321,7 +321,7 @@ export function ChatPanel({
               </div>
               <div className="wf-split-msgs" ref={humanRef} data-testid="msgs-human">
                 {snapshot.messages
-                  .filter((m) => (m.splitMirror || m.type === 'system') && isVisibleTo(m, 'attendant'))
+                  .filter((m) => isVisibleTo(m, 'attendant'))
                   .map((m) => (
                     <MessageRow key={`h-${m.id}`} message={mirrorForHumanPane(m)} />
                   ))}
@@ -387,10 +387,11 @@ function mirrorForUserPane(m: Message): Message {
   return m;
 }
 function mirrorForHumanPane(m: Message): Message {
-  // In the human pane: user messages appear on the left; human messages on the right.
+  // In the human pane: user messages appear on the left; human and agent messages on the right.
   if (m.type === 'system') return m;
   if (m.senderType === 'user') return { ...m, side: 'left' };
   if (m.senderType === 'human') return { ...m, side: 'right', senderName: 'Daniel M. (you)' };
+  if (m.senderType === 'agent') return { ...m, side: 'right' };
   return m;
 }
 

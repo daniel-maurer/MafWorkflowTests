@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Icon } from '@maf/shared-admin-app';
+import { Icon, Input, Select, Textarea, Switch, Card } from '@maf/shared-admin-app';
 import { AdminShell } from '@/components/AdminShell';
 import { adminApi, type CustomerAddressItem } from '@/services/adminApiClient';
 
@@ -33,7 +33,8 @@ export function CustomerFormPage() {
 
   useEffect(() => {
     if (id) {
-      adminApi.getCustomer(id)
+      adminApi
+        .getCustomer(id)
         .then((c) => {
           setName(c.name);
           setEmail(c.email);
@@ -49,7 +50,7 @@ export function CustomerFormPage() {
     }
   }, [id]);
 
-  function handleAddAddress() {
+  async function handleAddAddress() {
     if (!newStreet || !newCity) {
       alert('Informe ao menos logradouro e cidade.');
       return;
@@ -64,7 +65,20 @@ export function CustomerFormPage() {
       zipCode: newZipCode,
       isDefault: addresses.length === 0,
     };
-    setAddresses([...addresses, newAddr]);
+
+    if (isEditing && id) {
+      try {
+        const savedAddr = await adminApi.addCustomerAddress(id, newAddr);
+        setAddresses([...addresses, savedAddr]);
+      } catch (e) {
+        console.error(e);
+        alert('Erro ao adicionar endereço');
+        return;
+      }
+    } else {
+      setAddresses([...addresses, newAddr]);
+    }
+
     setNewStreet('');
     setNewNumber('');
     setNewNeighborhood('');
@@ -74,7 +88,18 @@ export function CustomerFormPage() {
     setShowAddressForm(false);
   }
 
-  function handleRemoveAddress(index: number) {
+  async function handleRemoveAddress(index: number) {
+    const addr = addresses[index];
+    if (isEditing && id && addr.id) {
+      if (!confirm('Excluir endereço definitivamente?')) return;
+      try {
+        await adminApi.deleteCustomerAddress(id, addr.id);
+      } catch (e) {
+        console.error(e);
+        alert('Erro ao remover endereço');
+        return;
+      }
+    }
     setAddresses(addresses.filter((_, i) => i !== index));
   }
 
@@ -103,7 +128,7 @@ export function CustomerFormPage() {
       }
       navigate('/customers');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Erro ao gravar cliente');
     } finally {
       setSaving(false);
     }
@@ -114,127 +139,139 @@ export function CustomerFormPage() {
       title={isEditing ? `Editar Cliente: ${name}` : 'Cadastrar Novo Cliente'}
       subtitle="Base de clientes centralizada — reutilizada em todos os módulos e workflows"
     >
-      <form onSubmit={handleSubmit} style={{ maxWidth: 800 }}>
+      <form onSubmit={handleSubmit} style={{ maxWidth: 840 }}>
         {error && (
-          <div style={{ padding: 'var(--space-3)', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-danger)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-xs)' }}>
-            {error}
+          <div
+            style={{
+              padding: 'var(--space-3)',
+              background: 'rgba(239, 68, 68, 0.1)',
+              color: 'var(--color-error)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 'var(--space-4)',
+              fontSize: 'var(--text-xs)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <Icon name="alert-circle" size={16} />
+            <span>{error}</span>
           </div>
         )}
 
-        <div className="surface-card" style={{ padding: 'var(--space-5)', marginBottom: 'var(--space-5)' }}>
-          <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-4)' }}>Dados Cadastrais</h3>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Nome Completo / Razão Social *</label>
-              <input
-                type="text"
-                className="input"
+        {/* Card 1: Dados Cadastrais */}
+        <Card
+          title="Dados Cadastrais"
+          subtitle="Identificação, tipo de cliente e canais de contato"
+          style={{ marginBottom: 'var(--space-5)' }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-4)' }}>
+              <Input
+                label="Nome Completo / Razão Social"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ex: João da Silva ou Empresa LTDA"
-                style={{ width: '100%', fontSize: 'var(--text-xs)' }}
+                leftIcon="user"
               />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Tipo de Cliente</label>
-              <select
-                className="input"
+
+              <Select
+                label="Tipo de Cliente"
                 value={customerType}
                 onChange={(e) => setCustomerType(e.target.value as any)}
-                style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-              >
-                <option value="individual">Pessoa Física</option>
-                <option value="business">Pessoa Jurídica</option>
-              </select>
+                leftIcon="briefcase"
+                options={[
+                  { value: 'individual', label: 'Pessoa Física' },
+                  { value: 'business', label: 'Pessoa Jurídica' },
+                ]}
+              />
             </div>
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>E-mail *</label>
-              <input
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+              <Input
+                label="E-mail"
                 type="email"
-                className="input"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="cliente@email.com"
-                style={{ width: '100%', fontSize: 'var(--text-xs)' }}
+                leftIcon="mail"
               />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Telefone / WhatsApp</label>
-              <input
-                type="text"
-                className="input"
+
+              <Input
+                label="Telefone / WhatsApp"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="(11) 99999-9999"
-                style={{ width: '100%', fontSize: 'var(--text-xs)' }}
+                leftIcon="phone"
               />
             </div>
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Tipo de Documento</label>
-              <select
-                className="input"
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 'var(--space-4)' }}>
+              <Select
+                label="Tipo de Documento"
                 value={documentType}
                 onChange={(e) => setDocumentType(e.target.value)}
-                style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-              >
-                <option value="cpf">CPF</option>
-                <option value="cnpj">CNPJ</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Número do Documento</label>
-              <input
-                type="text"
-                className="input"
+                leftIcon="file-text"
+                options={[
+                  { value: 'cpf', label: 'CPF' },
+                  { value: 'cnpj', label: 'CNPJ' },
+                ]}
+              />
+
+              <Input
+                label="Número do Documento"
                 value={documentNumber}
                 onChange={(e) => setDocumentNumber(e.target.value)}
                 placeholder="000.000.000-00"
-                style={{ width: '100%', fontSize: 'var(--text-xs)', fontFamily: 'monospace' }}
+                leftIcon="hash"
+              />
+            </div>
+
+            <Textarea
+              label="Observações / Highlights das Conversas"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Preferências de compra, estilo, tamanhos de interesse ou anotações extraídas pelos Agentes..."
+              helperText="Informações utilizadas pelos Agentes para personalizar as próximas conversas"
+            />
+
+            <div style={{ paddingTop: 'var(--space-1)' }}>
+              <Switch
+                label="Cliente Ativo"
+                description="Permite que o cliente seja localizado e atenda pedidos"
+                checked={active}
+                onChange={setActive}
               />
             </div>
           </div>
+        </Card>
 
-          <div>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Observações / Histórico</label>
-            <textarea
-              className="input"
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Preferências de entrega, condições negociadas, etc."
-              style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-            />
-          </div>
-        </div>
-
-        {/* Endereços */}
-        <div className="surface-card" style={{ padding: 'var(--space-5)', marginBottom: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
-            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Endereços de Entrega & Cobrança</h3>
+        {/* Card 2: Endereços */}
+        <Card
+          title="Endereços de Entrega & Cobrança"
+          subtitle="Locais salvos para envio de compras e cálculo de entrega pelos Agentes"
+          action={
             <button
               type="button"
               className="btn btn-secondary"
               onClick={() => setShowAddressForm(!showAddressForm)}
-              style={{ fontSize: 11 }}
+              style={{ fontSize: 11, padding: '4px 12px', gap: 6 }}
             >
-              <Icon name="plus" size={13} />
-              <span>{showAddressForm ? 'Fechar' : 'Adicionar Endereço'}</span>
+              <Icon name={showAddressForm ? 'x' : 'plus'} size={13} />
+              <span>{showAddressForm ? 'Cancelar' : 'Adicionar Endereço'}</span>
             </button>
-          </div>
-
+          }
+          style={{ marginBottom: 'var(--space-5)' }}
+        >
           {addresses.length === 0 ? (
-            <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Nenhum endereço cadastrado para este cliente.</p>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
+              Nenhum endereço cadastrado para este cliente.
+            </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: showAddressForm ? 'var(--space-4)' : 0 }}>
               {addresses.map((a, idx) => (
                 <div
                   key={idx}
@@ -249,18 +286,26 @@ export function CustomerFormPage() {
                     fontSize: 'var(--text-xs)',
                   }}
                 >
-                  <div>
-                    <span style={{ fontWeight: 600, marginRight: 8 }}>[{a.label}]</span>
-                    {a.street}, {a.number} {a.complement ? `(${a.complement})` : ''} - {a.neighborhood}, {a.city}/{a.state} - CEP: {a.zipCode}
-                    {a.isDefault && <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-success)', fontWeight: 600 }}>(Padrão)</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <Icon name="map-pin" size={14} />
+                    <div>
+                      <span style={{ fontWeight: 600, marginRight: 6 }}>[{a.label}]</span>
+                      {a.street}, {a.number} {a.complement ? `(${a.complement})` : ''} - {a.neighborhood}, {a.city}/{a.state} - CEP: {a.zipCode}
+                      {a.isDefault && (
+                        <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-success)', fontWeight: 600 }}>
+                          (Padrão)
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <button
                     type="button"
                     className="btn btn-ghost"
                     onClick={() => handleRemoveAddress(idx)}
-                    style={{ padding: '2px 6px', color: 'var(--color-danger)' }}
+                    style={{ padding: '4px 8px', color: 'var(--color-error)' }}
+                    title="Excluir Endereço"
                   >
-                    <Icon name="x" size={13} />
+                    <Icon name="x" size={14} />
                   </button>
                 </div>
               ))}
@@ -269,53 +314,113 @@ export function CustomerFormPage() {
 
           {/* Form inline para adicionar endereço */}
           {showAddressForm && (
-            <div style={{ padding: 'var(--space-4)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-md)', marginTop: 'var(--space-3)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 10, fontWeight: 600, marginBottom: 2 }}>Rótulo</label>
-                  <input type="text" className="input" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Principal, Casa, etc" style={{ width: '100%', fontSize: 11 }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 10, fontWeight: 600, marginBottom: 2 }}>Logradouro / Rua</label>
-                  <input type="text" className="input" value={newStreet} onChange={(e) => setNewStreet(e.target.value)} placeholder="Av. Paulista" style={{ width: '100%', fontSize: 11 }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 10, fontWeight: 600, marginBottom: 2 }}>Número</label>
-                  <input type="text" className="input" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} placeholder="1000" style={{ width: '100%', fontSize: 11 }} />
-                </div>
+            <div
+              style={{
+                padding: 'var(--space-4)',
+                background: 'var(--color-surface-offset)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                marginTop: 'var(--space-3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)' }}>Novo Endereço</span>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr 1fr', gap: 'var(--space-3)' }}>
+                <Input
+                  label="Rótulo"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder="Principal, Casa, Trabalho"
+                  leftIcon="tag"
+                />
+                <Input
+                  label="Logradouro / Rua"
+                  value={newStreet}
+                  onChange={(e) => setNewStreet(e.target.value)}
+                  placeholder="Av. Paulista"
+                  leftIcon="map-pin"
+                />
+                <Input
+                  label="Número"
+                  value={newNumber}
+                  onChange={(e) => setNewNumber(e.target.value)}
+                  placeholder="1000"
+                />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 10, fontWeight: 600, marginBottom: 2 }}>Bairro</label>
-                  <input type="text" className="input" value={newNeighborhood} onChange={(e) => setNewNeighborhood(e.target.value)} placeholder="Bela Vista" style={{ width: '100%', fontSize: 11 }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 10, fontWeight: 600, marginBottom: 2 }}>Cidade</label>
-                  <input type="text" className="input" value={newCity} onChange={(e) => setNewCity(e.target.value)} placeholder="São Paulo" style={{ width: '100%', fontSize: 11 }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 10, fontWeight: 600, marginBottom: 2 }}>UF</label>
-                  <input type="text" className="input" maxLength={2} value={newState} onChange={(e) => setNewState(e.target.value)} placeholder="SP" style={{ width: '100%', fontSize: 11 }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 10, fontWeight: 600, marginBottom: 2 }}>CEP</label>
-                  <input type="text" className="input" value={newZipCode} onChange={(e) => setNewZipCode(e.target.value)} placeholder="01310-100" style={{ width: '100%', fontSize: 11 }} />
-                </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr', gap: 'var(--space-3)' }}>
+                <Input
+                  label="Bairro"
+                  value={newNeighborhood}
+                  onChange={(e) => setNewNeighborhood(e.target.value)}
+                  placeholder="Bela Vista"
+                />
+                <Input
+                  label="Cidade"
+                  value={newCity}
+                  onChange={(e) => setNewCity(e.target.value)}
+                  placeholder="São Paulo"
+                />
+                <Input
+                  label="UF"
+                  maxLength={2}
+                  value={newState}
+                  onChange={(e) => setNewState(e.target.value)}
+                  placeholder="SP"
+                />
+                <Input
+                  label="CEP"
+                  value={newZipCode}
+                  onChange={(e) => setNewZipCode(e.target.value)}
+                  placeholder="01310-100"
+                />
               </div>
-              <button type="button" className="btn btn-primary" onClick={handleAddAddress} style={{ fontSize: 11 }}>
-                Incluir Endereço
-              </button>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', paddingTop: 'var(--space-1)' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddressForm(false)}
+                  style={{ fontSize: 11, padding: '6px 14px' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleAddAddress}
+                  style={{ fontSize: 11, padding: '6px 16px', gap: 6 }}
+                >
+                  <Icon name="check" size={13} />
+                  <span>Salvar Endereço</span>
+                </button>
+              </div>
             </div>
           )}
-        </div>
+        </Card>
 
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            <Icon name="check" size={15} />
-            <span>{saving ? 'Gravando...' : isEditing ? 'Salvar Alterações' : 'Cadastrar Cliente'}</span>
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => navigate('/customers')}>
+        {/* Barra de Ações */}
+        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', paddingTop: 'var(--space-2)' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => navigate('/customers')}
+            style={{ padding: '8px 20px', fontSize: 12 }}
+          >
             Cancelar
+          </button>
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={saving}
+            style={{ padding: '8px 24px', fontSize: 12, gap: '8px' }}
+          >
+            <Icon name="check" size={16} />
+            <span>{saving ? 'Gravando...' : isEditing ? 'Salvar Alterações' : 'Cadastrar Cliente'}</span>
           </button>
         </div>
       </form>

@@ -22,25 +22,29 @@ public static class WorkflowFactory
         var catalogTools = new CatalogTools(salesAdminClient);
         var quoteTools = new QuoteTools(salesAdminClient);
         var cartTools = new CartTools(salesAdminClient);
+        var storeTools = new StoreTools(salesAdminClient);
+        var campaignTools = new CampaignTools(salesAdminClient);
         FollowUpTools.AdminClient = salesAdminClient;
         FollowUpTools.Interactor = interactor as ISalesUserInteractor;
 
         // === Agentes ===
         var intentAgent = IntentAgentFactory.GetIntentAgent(chatClient, instructionCache);
-        var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient, catalogTools, instructionCache);
+        var catalogAgent = CatalogAgentFactory.GetCatalogAgent(chatClient, catalogTools, storeTools, campaignTools, instructionCache);
         var decisionAgent = SalesAdvisorAgentFactory.GetCustomerDecisionAgent(chatClient, instructionCache);
-        var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient, quoteTools, instructionCache);
+        var quoteAgent = QuoteAgentFactory.GetQuoteAgent(chatClient, quoteTools, storeTools, campaignTools, instructionCache);
         var followUpAgent = FollowUpAgentFactory.GetFollowUpAgent(chatClient, cartTools, instructionCache);
         var salesRecordAgent = SalesRecordAgentFactory.GetSalesRecordAgent(chatClient, instructionCache);
+        var highlightsAgent = CustomerHighlightsAgentFactory.GetCustomerHighlightsAgent(chatClient, instructionCache);
 
         // === Executores ===
-        var intentExecutor = new IntentExecutor(intentAgent, interactor, salesAdminClient);
+        var intentExecutor = new IntentExecutor(intentAgent, chatClient, interactor, salesAdminClient);
         var catalogExecutor = new CatalogExecutor(catalogAgent, decisionAgent, interactor, catalogTools, salesAdminClient);
         var loopSearchAdapter = new LoopSearchAdapterExecutor(interactor);
-        var quoteExecutor = new QuoteExecutor(quoteAgent, interactor, salesAdminClient);
-        var followUpExecutor = new FollowUpExecutor(followUpAgent, interactor);
+        var quoteExecutor = new QuoteExecutor(quoteAgent, highlightsAgent, interactor, salesAdminClient);
+        var followUpExecutor = new FollowUpExecutor(followUpAgent, highlightsAgent, salesAdminClient, interactor);
         var humanSellerExecutor = new HumanSellerExecutor(interactor);
         var salesRecordExecutor = new SalesRecordExecutor(salesRecordAgent, interactor);
+        var highlightsExecutor = new HighlightsExecutor(highlightsAgent, salesAdminClient, interactor);
 
         return new WorkflowBuilder(userMessagePort)
             // Superstep 1: Triagem de Intenção e Cliente
@@ -60,6 +64,9 @@ public static class WorkflowFactory
             // Superstep 4: Finalização e Registro Analítico
             .AddEdge(followUpExecutor, salesRecordExecutor)
             .AddEdge(humanSellerExecutor, salesRecordExecutor)
+
+            // Superstep 5: Extração de Highlights
+            .AddEdge(salesRecordExecutor, highlightsExecutor)
             .Build();
     }
 

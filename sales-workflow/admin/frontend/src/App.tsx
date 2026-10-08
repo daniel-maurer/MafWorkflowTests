@@ -21,6 +21,11 @@ import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { PaymentConditionsPage } from '@/pages/payment-conditions/PaymentConditionsPage';
 import { FollowUpListPage } from '@/pages/follow-ups/FollowUpListPage';
 import { AgentInstructionsPage } from '@/pages/instructions/AgentInstructionsPage';
+import { DeliveryMethodsPage } from '@/pages/delivery-methods/DeliveryMethodsPage';
+import { StoreInfoPage } from '@/pages/store-info/StoreInfoPage';
+import { OrdersPage } from '@/pages/orders/OrdersPage';
+import { ConversationsPage } from '@/pages/conversations/ConversationsPage';
+import { CampaignsPage } from '@/pages/campaigns/CampaignsPage';
 
 function TokenWire() {
   const auth = useAuth();
@@ -45,6 +50,46 @@ export default function App() {
             element={
               <RequireAuth>
                 <DashboardPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/campaigns"
+            element={
+              <RequireAuth>
+                <CampaignsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/store-info"
+            element={
+              <RequireAuth>
+                <StoreInfoPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/delivery-methods"
+            element={
+              <RequireAuth>
+                <DeliveryMethodsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <RequireAuth>
+                <OrdersPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/conversations"
+            element={
+              <RequireAuth>
+                <ConversationsPage />
               </RequireAuth>
             }
           />

@@ -3,17 +3,26 @@ using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using SalesWorkflow.Models;
+using SalesWorkflow.Services;
 
 namespace SalesWorkflow.Executors;
 
 internal sealed class FollowUpExecutor : Executor<QuoteResult, FollowUpResult>
 {
     private readonly AIAgent _followUpAgent;
+    private readonly AIAgent _highlightsAgent;
+    private readonly SalesAdminClient _salesAdminClient;
     private readonly IUserInteractor _userInteractor;
 
-    public FollowUpExecutor(AIAgent followUpAgent, IUserInteractor userInteractor) : base("FollowUpExecutor")
+    public FollowUpExecutor(
+        AIAgent followUpAgent,
+        AIAgent highlightsAgent,
+        SalesAdminClient salesAdminClient,
+        IUserInteractor userInteractor) : base("FollowUpExecutor")
     {
         _followUpAgent = followUpAgent;
+        _highlightsAgent = highlightsAgent;
+        _salesAdminClient = salesAdminClient;
         _userInteractor = userInteractor;
     }
 
@@ -65,6 +74,16 @@ Responda SEMPRE no esquema JSON de FollowUpResult.";
             $"[ScheduleFollowUp] Retorno comercial agendado para {followUpResult.ScheduledAt:dd/MM/yyyy HH:mm} via {followUpResult.Channel} (tipo: {followUpResult.FollowUpType}).",
             "info",
             cancellationToken);
+
+        // Salva os highlights e o histórico completo no Admin
+        try
+        {
+            await HighlightsExecutor.SaveHighlightsAndConversationAsync(context, _highlightsAgent, _salesAdminClient, _userInteractor, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning($"[FollowUpExecutor] Falha ao acionar salvamento de highlights: {ex.Message}");
+        }
 
         await context.YieldOutputAsync(followUpResult, cancellationToken);
         return followUpResult;

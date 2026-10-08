@@ -65,12 +65,56 @@ internal sealed class CatalogExecutor : Executor<IntentResult, CatalogResult>
             return directHandoff;
         }
 
+        var history = await context.ReadStateAsync<List<ChatMessage>>(Constants.InteractionHistoryKey, Constants.SalesStateScope) ?? [];
+
+        var categories = await _salesAdminClient.GetCategoriesAsync(active: true, ct: cancellationToken);
+        var categoriesNames = categories.Count > 0
+            ? string.Join(", ", categories.Select(c => c.Name))
+            : "Celulares & Smartphones, Informática, Áudio & Vídeo, Periféricos, Vestuário, Calçados, Wearables";
+
+        // Proteção: se porventura chegou ao catálogo sem termo de busca e sem solicitar humano, recupera do histórico ou pergunta
+        if (string.IsNullOrWhiteSpace(intentResult.ExtractedProductQuery) && !intentResult.RequiresHuman)
+        {
+            var recovered = RecoverProductFromHistory(history);
+            if (!string.IsNullOrWhiteSpace(recovered))
+            {
+                Logger.LogInfo($"[CatalogExecutor] Recuperando produto do histórico: '{recovered}'");
+                intentResult.ExtractedProductQuery = recovered;
+            }
+            else
+            {
+                var askMsg = $"Como posso te ajudar hoje? Na MAF Store temos opções incríveis em {categoriesNames}! Você tem interesse em algum departamento ou produto específico?";
+                await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
+                var userProduct = await _userInteractor.GetUserResponseAsync(
+                    askMsg,
+                    "catalog",
+                    audience: MessageAudience.Both,
+                    cancellationToken: cancellationToken);
+
+                intentResult.ExtractedProductQuery = userProduct;
+                history.Add(new ChatMessage(ChatRole.Assistant, askMsg));
+                history.Add(new ChatMessage(ChatRole.User, userProduct));
+                await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
+            }
+        }
+
         _catalogTools.ResetSearchCounter();
+
+        var activeCampaigns = await _salesAdminClient.GetActiveCampaignsAsync(cancellationToken);
+        var campaignInfo = activeCampaigns.Count > 0
+            ? string.Join("; ", activeCampaigns.Select(c => $"{c.Name}: {c.Description}"))
+            : "Nenhuma campanha ativa no momento.";
 
         var prompt = $@"Intenção: '{intentResult.Intent}'
 Contexto do cliente: '{intentResult.Summary}'
 Termo de busca: '{intentResult.ExtractedProductQuery}'
-Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())}";
+Departamentos e Categorias da loja: {categoriesNames}
+Campanhas promocionais ativas: {campaignInfo}
+Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())}
+
+INSTRUÇÃO COMERCIAL:
+1. Apresente as opções de produto encontradas e destaque as campanhas promocionais ativas para incentivar o cliente a aproveitar as condições (ex: descontos progressivos e frete grátis).
+2. Se o cliente perguntou que tipos de produtos vendemos ou pediu sugestões gerais ('o que tem de legal', 'o que está saindo bem', 'novidades'), mencione os nossos departamentos disponíveis ({categoriesNames}) e apresente os produtos em destaque de estoque.";
 
         var response = await _catalogAgent.RunAsync(prompt, cancellationToken: cancellationToken);
 
@@ -84,26 +128,6 @@ Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())
                 OriginalIntent = intentResult.Intent,
                 MessageForUser = "Não encontrei o item especificado no momento. Gostaria de falar com um de nossos consultores?"
             };
-        }
-
-        // Resgate inteligente: Se o agente marcou que não encontrou mas a ferramenta retornou produtos com estoque
-        if ((!catalogResult.HasResults || catalogResult.Products == null || catalogResult.Products.Count == 0) && _catalogTools.LastFoundProducts.Count > 0)
-        {
-            var inStockProducts = _catalogTools.LastFoundProducts.Where(p => p.InStock && p.StockQty > 0).Take(2).ToList();
-            if (inStockProducts.Count > 0)
-            {
-                Logger.LogInfo($"[CatalogExecutor] Resgatando {inStockProducts.Count} produto(s) em estoque encontrados pela ferramenta que atendem a busca '{intentResult.ExtractedProductQuery}'.");
-                catalogResult.HasResults = true;
-                catalogResult.RequiresHuman = false;
-                catalogResult.Products = inStockProducts;
-                catalogResult.MessageForUser = inStockProducts.Count == 1
-                    ? $"Encontrei esta excelente opção em nosso estoque para '{intentResult.ExtractedProductQuery}':\n\n" +
-                      $"• **{inStockProducts[0].Name}** — R$ {inStockProducts[0].Price:N2} (Cor: {inStockProducts[0].Color}, Tam: {inStockProducts[0].Size})\n\n" +
-                      "O que achou dessa opção? Deseja que eu monte um orçamento ou gostaria de ver outras opções?"
-                    : $"Encontrei ótimas opções em nosso estoque que atendem perfeitamente ao seu pedido de '{intentResult.ExtractedProductQuery}':\n\n" +
-                      string.Join("\n", inStockProducts.Select(p => $"• **{p.Name}** — R$ {p.Price:N2} (Cor: {p.Color}, Tam: {p.Size})")) +
-                      "\n\nQual dessas opções você prefere, gostaria de ver outras opções ou deseja que eu monte um orçamento?";
-            }
         }
 
         catalogResult.OriginalIntent = intentResult.Intent;
@@ -168,6 +192,19 @@ Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())
             }
         }
 
+        // Destaca a campanha ativa na apresentação do catálogo
+        if (activeCampaigns.Count > 0)
+        {
+            var mainCamp = activeCampaigns.FirstOrDefault(c => c.IsActive) ?? activeCampaigns[0];
+            var campBanner = $"\n\n🎉 **Aproveite nossa campanha '{mainCamp.Name}'**: {mainCamp.Description}";
+            if (!displayMessage.Contains(mainCamp.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                displayMessage += campBanner;
+            }
+        }
+
+        displayMessage = displayMessage.Replace("https://mafstore.com/images/products/", "/images/products/");
+
         var toolCalls = catalogResult.Products.Select(p => new AgentToolCall
         {
             Name = "SearchProducts",
@@ -194,6 +231,10 @@ Filtros: {JsonSerializer.Serialize(intentResult.Filters ?? new ProductFilters())
             audience: MessageAudience.Both,
             images: images.Count > 0 ? images : null,
             cancellationToken: cancellationToken);
+
+        history.Add(new ChatMessage(ChatRole.Assistant, displayMessage));
+        history.Add(new ChatMessage(ChatRole.User, customerAnswer));
+        await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
 
         await _userInteractor.PublishAgentStateAsync("catalog", "done", "Done", cancellationToken);
         await _userInteractor.SetAgentTypingAsync("Analisando sua resposta...", true, cancellationToken);
@@ -294,6 +335,10 @@ Resposta do cliente:
                         audience: MessageAudience.Both,
                         cancellationToken: cancellationToken);
 
+                    history.Add(new ChatMessage(ChatRole.Assistant, photoMsg));
+                    history.Add(new ChatMessage(ChatRole.User, nextUserReply));
+                    await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
+
                     customerAnswer = nextUserReply;
 
                     // Reavalia a resposta do cliente
@@ -337,6 +382,10 @@ Resposta do cliente:
                     "catalog",
                     audience: MessageAudience.Both,
                     cancellationToken: cancellationToken);
+
+                history.Add(new ChatMessage(ChatRole.Assistant, nextPrompt));
+                history.Add(new ChatMessage(ChatRole.User, nextUserReply));
+                await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
 
                 customerAnswer = nextUserReply;
 
@@ -415,5 +464,46 @@ Resposta do cliente:
 
         await context.YieldOutputAsync(catalogResult, cancellationToken);
         return catalogResult;
+    }
+
+    private static string RecoverProductFromHistory(List<ChatMessage> history)
+    {
+        if (history == null || history.Count == 0) return string.Empty;
+
+        var productKeywords = new[]
+        {
+            "tênis de corrida", "tenis de corrida", "tênis corrida", "tenis corrida", "tênis esportivo", "tenis esportivo",
+            "tênis", "tenis", "sapatênis", "sapatenis", "sapato",
+            "camisa polo", "camisa de praia", "camisa praia", "camisa social", "camisa",
+            "camiseta", "bermuda", "calça", "calca", "short", "jaqueta", "casaco", "blusão", "blusao"
+        };
+
+        for (int i = history.Count - 1; i >= 0; i--)
+        {
+            var msg = history[i];
+            if (msg.Role != ChatRole.User || string.IsNullOrWhiteSpace(msg.Text)) continue;
+
+            var lower = msg.Text.ToLowerInvariant();
+            foreach (var kw in productKeywords)
+            {
+                if (lower.Contains(kw))
+                {
+                    var clean = msg.Text.Trim();
+                    var prefixes = new[] { "quero um ", "quero uma ", "quero ", "preciso de um ", "preciso de uma ", "preciso de ", "gostaria de ", "tem ", "busco um ", "busco uma " };
+                    foreach (var p in prefixes)
+                    {
+                        var idx = clean.IndexOf(p, StringComparison.OrdinalIgnoreCase);
+                        if (idx >= 0)
+                        {
+                            var sub = clean[(idx + p.Length)..].Trim();
+                            if (!string.IsNullOrWhiteSpace(sub) && sub.Length <= 40) return sub;
+                        }
+                    }
+                    return kw;
+                }
+            }
+        }
+
+        return string.Empty;
     }
 }

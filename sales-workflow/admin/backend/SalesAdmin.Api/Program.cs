@@ -132,6 +132,11 @@ api.MapGroup("/payment-conditions").MapPaymentConditionEndpoints().WithTags("Pay
 api.MapGroup("/follow-ups").MapFollowUpEndpoints().WithTags("Follow-Ups");
 api.MapGroup("/search").MapSearchEndpoints().WithTags("Vector Search (RAG)");
 api.MapGroup("/agent-instructions").MapAgentInstructionEndpoints().WithTags("Agent Instructions");
+app.MapDeliveryMethodEndpoints();
+app.MapStoreInfoEndpoints();
+app.MapOrderEndpoints();
+app.MapConversationEndpoints();
+app.MapCampaignEndpoints();
 
 // Status endpoint
 api.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow })).AllowAnonymous();

@@ -54,6 +54,13 @@ public sealed class CatalogTools
         }
     }
 
+    [Description("Lista todas as categorias e departamentos de produtos ativos cadastrados na loja.")]
+    public async Task<List<string>> GetCategories(CancellationToken cancellationToken = default)
+    {
+        var categories = await _client.GetCategoriesAsync(active: true, ct: cancellationToken);
+        return categories.Select(c => c.Name).ToList();
+    }
+
     [Description("Pesquisa produtos no catálogo via busca semântica e palavras-chave (RAG pgvector). Retorna os produtos mais relevantes do estoque para avaliação.")]
     public async Task<List<ProductInfo>> SearchProducts(
         [Description("Termo de busca com palavras-chave, características ou descrição do produto desejado")] string query,

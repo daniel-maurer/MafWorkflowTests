@@ -25,4 +25,10 @@ public sealed class Customer
 
     [JsonIgnore]
     public List<FollowUpRecord> FollowUps { get; set; } = [];
+
+    [JsonIgnore]
+    public List<Order> Orders { get; set; } = [];
+
+    [JsonIgnore]
+    public List<Conversation> Conversations { get; set; } = [];
 }

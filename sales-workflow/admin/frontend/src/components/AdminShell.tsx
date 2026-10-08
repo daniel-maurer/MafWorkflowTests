@@ -12,13 +12,18 @@ interface AdminShellProps {
 export function AdminShell({ children, title, subtitle, action }: AdminShellProps) {
   const navItems = [
     { to: '/', label: 'Dashboard', icon: 'server' },
+    { to: '/orders', label: 'Pedidos', icon: 'shopping-cart' },
+    { to: '/conversations', label: 'Conversas / Logs', icon: 'message-circle' },
+    { to: '/customers', label: 'Clientes & Endereços', icon: 'user' },
     { to: '/products', label: 'Produtos', icon: 'database' },
     { to: '/categories', label: 'Categorias', icon: 'tag' },
     { to: '/discounts', label: 'Descontos & Cupons', icon: 'percent' },
-    { to: '/customers', label: 'Clientes (Compartilhado)', icon: 'user' },
-    { to: '/follow-ups', label: 'Follow-Ups & Retornos', icon: 'message-square' },
+    { to: '/campaigns', label: 'Campanhas', icon: 'calendar' },
+    { to: '/delivery-methods', label: 'Entregas & Retiradas', icon: 'truck' },
     { to: '/payment-conditions', label: 'Condições de Pagamento', icon: 'credit-card' },
-    { to: '/instructions', label: 'Instruções dos Agentes', icon: 'cpu' },
+    { to: '/store-info', label: 'Dados da Loja', icon: 'info' },
+    { to: '/follow-ups', label: 'Follow-Ups', icon: 'message-square' },
+    { to: '/instructions', label: 'Instruções IA', icon: 'cpu' },
   ];
 
   return (

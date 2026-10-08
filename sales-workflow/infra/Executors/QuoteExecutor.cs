@@ -11,15 +11,18 @@ namespace SalesWorkflow.Executors;
 internal sealed class QuoteExecutor : Executor<CatalogResult, QuoteResult>
 {
     private readonly AIAgent _quoteAgent;
+    private readonly AIAgent _highlightsAgent;
     private readonly IUserInteractor _userInteractor;
     private readonly SalesAdminClient _salesAdminClient;
 
     public QuoteExecutor(
         AIAgent quoteAgent,
+        AIAgent highlightsAgent,
         IUserInteractor userInteractor,
         SalesAdminClient salesAdminClient) : base("QuoteExecutor")
     {
         _quoteAgent = quoteAgent;
+        _highlightsAgent = highlightsAgent;
         _userInteractor = userInteractor;
         _salesAdminClient = salesAdminClient;
     }
@@ -41,6 +44,8 @@ internal sealed class QuoteExecutor : Executor<CatalogResult, QuoteResult>
             false,
             cancellationToken);
 
+        var history = await context.ReadStateAsync<List<ChatMessage>>(Constants.InteractionHistoryKey, Constants.SalesStateScope) ?? [];
+
         var cart = await context.ReadStateAsync<List<ProductInfo>>(Constants.CartItemsKey, Constants.SalesStateScope) ?? [];
         var allProductsToQuote = (catalogResult.SelectedProducts != null && catalogResult.SelectedProducts.Count > 0)
             ? catalogResult.SelectedProducts
@@ -52,12 +57,14 @@ internal sealed class QuoteExecutor : Executor<CatalogResult, QuoteResult>
         }
 
         var conditions = await _salesAdminClient.GetPaymentConditionsAsync(cancellationToken);
+        var activeCampaigns = await _salesAdminClient.GetActiveCampaignsAsync(cancellationToken);
 
         var prompt = $@"Gere um orçamento formal para os seguintes produtos confirmados pelo cliente:
 {JsonSerializer.Serialize(allProductsToQuote.Select(p => new { p.Sku, p.Name, p.Price }))}
 
 Condições especiais aplicáveis:
 - Formas de pagamento ativas: {JsonSerializer.Serialize(conditions.Where(c => c.Active))}
+- Campanhas ativas no sistema: {JsonSerializer.Serialize(activeCampaigns.Where(c => c.IsActive))}
 
 INSTRUÇÕES:
 1. Chame GenerateQuote com a lista de SKUs e quantidades.
@@ -132,32 +139,43 @@ Responda SEMPRE estritamente no esquema JSON de QuoteResult.";
             customer = await context.ReadStateAsync<CustomerInfo>(Constants.CustomerDataKey, Constants.SalesStateScope);
         }
 
+        var deliveryAnswer = "Retirada";
+
         if (customer != null && !string.IsNullOrWhiteSpace(customer.Id))
         {
             await _userInteractor.SetAgentTypingAsync(string.Empty, false, cancellationToken);
+
+            var deliveryMethods = await _salesAdminClient.GetDeliveryMethodsAsync(cancellationToken);
+            var deliveryOptions = deliveryMethods.Count > 0 
+                ? string.Join(", ", deliveryMethods.Where(m => m.Active).Select(m => $"{m.Name} (R$ {m.Price:N2})")) 
+                : "Entrega Padrão (R$ 15,00) ou Retirada na Loja";
 
             string deliveryQuestion;
             if (customer.Addresses != null && customer.Addresses.Count > 0)
             {
                 var defaultAddr = customer.Addresses.FirstOrDefault(a => a.IsDefault) ?? customer.Addresses[0];
-                deliveryQuestion = $"Gostaria que a gente enviasse o pedido para entrega? Já temos seu endereço cadastrado: {defaultAddr.Street}, {defaultAddr.Number} - {defaultAddr.City}/{defaultAddr.State}. Deseja confirmar para este endereço ou cadastrar outro? (Responda 'sim' para confirmar, informe um novo endereço, ou 'não' para retirar na loja).";
+                deliveryQuestion = $"Para o envio, temos as opções: {deliveryOptions}.\n\nJá temos seu endereço cadastrado: {defaultAddr.Street}, {defaultAddr.Number} - {defaultAddr.City}/{defaultAddr.State}. Deseja confirmar a entrega neste endereço, informar um novo, ou prefere retirar na loja física?";
             }
             else
             {
-                deliveryQuestion = "Você gostaria que a gente enviasse o seu pedido para entrega? (Se sim, por favor informe seu endereço completo: Rua, Número, Bairro, Cidade e CEP. Se preferir retirar na loja física, basta responder 'não').";
+                deliveryQuestion = $"Temos as seguintes opções de entrega: {deliveryOptions}.\n\nPara qual opção você tem preferência? (Se for entrega, por favor informe seu endereço completo. Se for retirada, basta confirmar).";
             }
 
-            var deliveryAnswer = await _userInteractor.GetUserResponseAsync(
+            deliveryAnswer = await _userInteractor.GetUserResponseAsync(
                 deliveryQuestion,
                 "quote",
                 audience: MessageAudience.Both,
                 cancellationToken: cancellationToken);
 
+            history.Add(new ChatMessage(ChatRole.Assistant, deliveryQuestion));
+            history.Add(new ChatMessage(ChatRole.User, deliveryAnswer));
+            await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
+
             if (!string.IsNullOrWhiteSpace(deliveryAnswer) &&
                 !deliveryAnswer.Trim().Equals("não", StringComparison.OrdinalIgnoreCase) &&
                 !deliveryAnswer.Trim().Equals("nao", StringComparison.OrdinalIgnoreCase) &&
                 !deliveryAnswer.Trim().Equals("retirar", StringComparison.OrdinalIgnoreCase) &&
-                !deliveryAnswer.Trim().Equals("loja", StringComparison.OrdinalIgnoreCase))
+                !deliveryAnswer.Trim().Contains("loja", StringComparison.OrdinalIgnoreCase))
             {
                 var cleanAns = deliveryAnswer.Trim().ToLowerInvariant();
                 var isConfirmation = cleanAns is "sim" or "quero" or "pode enviar" or "confirmo" or "isso" or "ok";
@@ -214,22 +232,36 @@ Responda SEMPRE estritamente no esquema JSON de QuoteResult.";
         var itemsBreakdown = string.Join("\n", allProductsToQuote.Select(p =>
             $"• **{p.Name}** — R$ {p.Price:N2} (Cor: {p.Color ?? "N/A"}, Tam: {p.Size ?? "N/A"})"));
 
+        // Destaque da campanha no resumo do orçamento
+        var campaignHighlight = string.Empty;
+        if (activeCampaigns.Count > 0)
+        {
+            var mainCamp = activeCampaigns.FirstOrDefault(c => c.IsActive) ?? activeCampaigns[0];
+            campaignHighlight = $"\n🎉 **Campanha Aplicada ({mainCamp.Name})**: {mainCamp.Description}";
+        }
+
         var quoteSummary = $@"📋 **Itens do seu Orçamento ({quoteResult.QuoteId})**:
 {itemsBreakdown}
 
 **Resumo:**
-Subtotal: R$ {quoteResult.Subtotal:N2}{(quoteResult.Discount > 0 ? $" | Desconto: -R$ {quoteResult.Discount:N2}" : "")} | **Total: R$ {quoteResult.Total:N2}**";
+Subtotal: R$ {quoteResult.Subtotal:N2}{(quoteResult.Discount > 0 ? $" | Desconto da Campanha: -R$ {quoteResult.Discount:N2}" : "")} | **Total: R$ {quoteResult.Total:N2}**{campaignHighlight}";
 
         var quoteMsg = $"{quoteSummary}\n\n{quoteResult.MessageForUser}\n\n**Condições de Pagamento:**\n{quoteResult.PaymentConditions}";
 
+        var closingQuestion = $"{quoteMsg}\n\nVocê tem alguma dúvida sobre os itens, valores ou formas de pagamento, ou deseja confirmar o pedido?";
+
         // Apresenta a proposta e aguarda confirmação ou dúvidas do cliente
         var userClosingReply = await _userInteractor.GetUserResponseAsync(
-            $"{quoteMsg}\n\nVocê tem alguma dúvida sobre os itens, valores ou formas de pagamento, ou deseja confirmar o pedido?",
+            closingQuestion,
             "quote",
             tools: quoteTools,
             audience: MessageAudience.Both,
             images: quoteImages.Count > 0 ? quoteImages : null,
             cancellationToken: cancellationToken);
+
+        history.Add(new ChatMessage(ChatRole.Assistant, closingQuestion));
+        history.Add(new ChatMessage(ChatRole.User, userClosingReply));
+        await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
 
         if (!string.IsNullOrWhiteSpace(userClosingReply))
         {
@@ -240,6 +272,9 @@ Subtotal: R$ {quoteResult.Subtotal:N2}{(quoteResult.Discount > 0 ? $" | Desconto
                     string.Join("\n", allProductsToQuote.Select(p => $"• **{p.Name}** — R$ {p.Price:N2}")) +
                     $"\n\nTotal: R$ {quoteResult.Total:N2}. Fico à disposição se precisar de qualquer outra informação!";
 
+                history.Add(new ChatMessage(ChatRole.Assistant, priceAnswer));
+                await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
+
                 await _userInteractor.SendUserResponseAsync(
                     priceAnswer,
                     "quote",
@@ -248,11 +283,61 @@ Subtotal: R$ {quoteResult.Subtotal:N2}{(quoteResult.Discount > 0 ? $" | Desconto
             }
             else if (!lower.Contains("não") && !lower.Contains("nao") && !lower.Contains("cancela"))
             {
+                var confirmMsg = "Perfeito! Seu pedido foi confirmado com sucesso. Agradecemos muito pela preferência e estamos à disposição!";
+                history.Add(new ChatMessage(ChatRole.Assistant, confirmMsg));
+                await context.QueueStateUpdateAsync(Constants.InteractionHistoryKey, history, Constants.SalesStateScope);
+
                 await _userInteractor.SendUserResponseAsync(
-                    "Perfeito! Seu pedido foi confirmado com sucesso. Agradecemos muito pela preferência e estamos à disposição!",
+                    confirmMsg,
                     "quote",
                     audience: MessageAudience.Both,
                     cancellationToken: cancellationToken);
+
+                if (customer != null && !string.IsNullOrWhiteSpace(customer.Id))
+                {
+                    try
+                    {
+                        var isPickup = deliveryAnswer.Contains("retir", StringComparison.OrdinalIgnoreCase) || 
+                                       deliveryAnswer.Contains("loja", StringComparison.OrdinalIgnoreCase);
+
+                        var orderReq = new CreateOrderRequest
+                        {
+                            CustomerId = Guid.Parse(customer.Id),
+                            TotalAmount = quoteResult.Total,
+                            Status = "Confirmed",
+                            DeliveryMethod = isPickup ? "Retirada na Loja Física" : "Entrega em Domicílio",
+                            PaymentMethod = quoteResult.PaymentConditions,
+                            Items = quoteResult.Items.Select(i => new CreateOrderItemRequest
+                            {
+                                ProductId = Guid.Empty, // Auto-resolvido pelo backend pelo Sku/Name
+                                Sku = i.Sku,
+                                Name = i.Name,
+                                Quantity = i.Quantity,
+                                UnitPrice = i.UnitPrice,
+                                TotalPrice = i.Total
+                            }).ToList()
+                        };
+                        var createdOrder = await _salesAdminClient.CreateOrderAsync(orderReq, cancellationToken);
+                        if (createdOrder != null)
+                        {
+                            await _userInteractor.PublishTraceAsync($"Pedido gravado com sucesso no banco de dados para {customer.Name} (Total: R$ {quoteResult.Total:N2}).", "success", cancellationToken);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning($"[QuoteExecutor] Falha ao registrar pedido final: {ex.Message}");
+                    }
+                }
+
+                // Dispara o salvamento dos highlights da conversa e log no Admin imediatamente após confirmação
+                try
+                {
+                    await HighlightsExecutor.SaveHighlightsAndConversationAsync(context, _highlightsAgent, _salesAdminClient, _userInteractor, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning($"[QuoteExecutor] Falha ao salvar highlights e log de conversa: {ex.Message}");
+                }
             }
         }
 

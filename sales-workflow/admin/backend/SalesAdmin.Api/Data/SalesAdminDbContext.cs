@@ -19,6 +19,13 @@ public class SalesAdminDbContext : DbContext
     public DbSet<PaymentCondition> PaymentConditions => Set<PaymentCondition>();
     public DbSet<FollowUpRecord> FollowUps => Set<FollowUpRecord>();
     public DbSet<AgentInstruction> AgentInstructions => Set<AgentInstruction>();
+    public DbSet<DeliveryMethod> DeliveryMethods => Set<DeliveryMethod>();
+    public DbSet<StoreInfo> StoreInfo => Set<StoreInfo>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -168,6 +175,77 @@ public class SalesAdminDbContext : DbContext
             entity.Property(a => a.AgentRole).HasMaxLength(100).IsRequired();
             entity.Property(a => a.Instructions).IsRequired();
             entity.HasIndex(a => new { a.WorkflowType, a.AgentRole }).IsUnique();
+        });
+
+        // DeliveryMethod
+        modelBuilder.Entity<DeliveryMethod>(entity =>
+        {
+            entity.ToTable("delivery_methods");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Type).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Price).HasPrecision(18, 2);
+        });
+
+        // StoreInfo
+        modelBuilder.Entity<StoreInfo>(entity =>
+        {
+            entity.ToTable("store_info");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+        });
+
+        // Order
+        modelBuilder.Entity<Order>(entity =>
+        {
+            entity.ToTable("orders");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TotalAmount).HasPrecision(18, 2);
+            entity.HasOne(e => e.Customer)
+                  .WithMany(c => c.Orders)
+                  .HasForeignKey(e => e.CustomerId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // OrderItem
+        modelBuilder.Entity<OrderItem>(entity =>
+        {
+            entity.ToTable("order_items");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UnitPrice).HasPrecision(18, 2);
+            entity.Property(e => e.TotalPrice).HasPrecision(18, 2);
+            entity.HasOne(e => e.Order)
+                  .WithMany(o => o.Items)
+                  .HasForeignKey(e => e.OrderId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Product)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProductId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Conversation
+        modelBuilder.Entity<Conversation>(entity =>
+        {
+            entity.ToTable("conversations");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SessionId).HasMaxLength(100).IsRequired();
+            entity.HasOne(e => e.Customer)
+                  .WithMany(c => c.Conversations)
+                  .HasForeignKey(e => e.CustomerId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ConversationMessage
+        modelBuilder.Entity<ConversationMessage>(entity =>
+        {
+            entity.ToTable("conversation_messages");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Role).HasMaxLength(50).IsRequired();
+            entity.HasOne(e => e.Conversation)
+                  .WithMany(c => c.Messages)
+                  .HasForeignKey(e => e.ConversationId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

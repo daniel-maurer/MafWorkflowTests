@@ -239,10 +239,105 @@ export const adminApi = {
   deleteAgentInstruction: (id: string) =>
     request<void>(`/agent-instructions/${id}`, { method: 'DELETE' }),
 
-  // RAG Search
-  searchProductsSemantic: (query: string, top = 5) =>
-    request<ProductItem[]>(`/search/products?q=${encodeURIComponent(query)}&top=${top}`),
+  // Delivery Methods
+  listDeliveryMethods: () => request<DeliveryMethodItem[]>('/delivery-methods'),
+  createDeliveryMethod: (data: Partial<DeliveryMethodItem>) => request<DeliveryMethodItem>('/delivery-methods', { method: 'POST', body: JSON.stringify(data) }),
+  updateDeliveryMethod: (id: string, data: Partial<DeliveryMethodItem>) => request<void>(`/delivery-methods/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDeliveryMethod: (id: string) => request<void>(`/delivery-methods/${id}`, { method: 'DELETE' }),
+
+  // Store Info
+  getStoreInfo: () => request<StoreInfoItem>('/store-info'),
+  createStoreInfo: (data: Partial<StoreInfoItem>) => request<StoreInfoItem>('/store-info', { method: 'POST', body: JSON.stringify(data) }),
+  updateStoreInfo: (id: string, data: Partial<StoreInfoItem>) => request<void>(`/store-info/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Orders
+  listOrders: () => request<OrderItem[]>('/orders'),
+  getOrder: (id: string) => request<OrderItem>(`/orders/${id}`),
+  deleteOrder: (id: string) => request<void>(`/orders/${id}`, { method: 'DELETE' }),
+
+  // Conversations
+  listConversations: () => request<ConversationItem[]>('/conversations'),
+  getConversation: (id: string) => request<ConversationItem>(`/conversations/${id}`),
+  deleteConversation: (id: string) => request<void>(`/conversations/${id}`, { method: 'DELETE' }),
+  // Campaigns
+  listCampaigns: (params?: { active?: boolean }) => {
+    const q = params?.active !== undefined ? `?active=${params.active}` : '';
+    return request<CampaignItem[]>(`/campaigns${q}`);
+  },
+  getCampaign: (id: string) => request<CampaignItem>(`/campaigns/${id}`),
+  createCampaign: (data: Partial<CampaignItem>) => request<CampaignItem>('/campaigns', { method: 'POST', body: JSON.stringify(data) }),
+  updateCampaign: (id: string, data: Partial<CampaignItem>) => request<CampaignItem>(`/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCampaign: (id: string) => request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
+
 };
+
+export interface CampaignItem {
+  id?: string;
+  name: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  freeShipping: boolean;
+  globalDiscountPercent: number;
+  discount1Item: number;
+  discount2Items: number;
+  discount3PlusItems: number;
+  customRulesJson?: string;
+}
+
+export interface DeliveryMethodItem {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  price: number;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface StoreInfoItem {
+  id: string;
+  name: string;
+  address: string;
+  phone?: string;
+  email?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OrderItem {
+  id: string;
+  customerId: string;
+  status: string;
+  totalAmount: number;
+  deliveryMethod?: string;
+  paymentMethod?: string;
+  createdAt: string;
+  items?: {
+    id: string;
+    sku: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }[];
+}
+
+export interface ConversationItem {
+  id: string;
+  customerId?: string;
+  sessionId: string;
+  status: string;
+  createdAt: string;
+  messages?: {
+    id: string;
+    role: string;
+    content: string;
+    createdAt: string;
+  }[];
+}
 
 export interface AgentInstructionItem {
   id?: string;

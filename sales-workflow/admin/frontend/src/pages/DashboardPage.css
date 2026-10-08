@@ -1,0 +1,164 @@
+/* Responsive Container for Dashboard */
+.dashboard-grid-container {
+  container-type: inline-size;
+  container-name: dashboard-grid;
+  margin-bottom: var(--space-6);
+}
+
+.stat-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+/* Size-aware styling for stat cards */
+@container dashboard-grid (max-width: 1024px) {
+  .stat-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@container dashboard-grid (max-width: 500px) {
+  .stat-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stat-card {
+  padding: var(--space-4);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform var(--transition), box-shadow var(--transition);
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-border-hover);
+}
+
+/* Modern Responsive Table (Container Queries) */
+.modern-responsive-table-wrapper {
+  container-type: inline-size;
+  container-name: table-container;
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+}
+
+.modern-responsive-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.modern-responsive-table th,
+.modern-responsive-table td {
+  padding: var(--space-3);
+  text-align: left;
+}
+
+.modern-responsive-table th {
+  background: var(--color-surface-offset);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  white-space: nowrap;
+}
+
+.modern-responsive-table tr {
+  border-bottom: 1px solid var(--color-border);
+  transition: background var(--transition);
+}
+
+.modern-responsive-table tbody tr:hover {
+  background: var(--color-surface-offset);
+}
+
+/* Mobile layout for table using container queries */
+@container table-container (max-width: 500px) {
+  .modern-responsive-table thead {
+    display: none;
+  }
+
+  .modern-responsive-table tr {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .modern-responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0;
+    border: none;
+  }
+
+  .modern-responsive-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-right: var(--space-3);
+  }
+}
+
+/* General Layout Grids */
+.dashboard-section-2-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.dashboard-section-3-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+@media (max-width: 1024px) {
+  .dashboard-section-2-col {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-section-3-col {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-section-3-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Activity item hover effect */
+.activity-item {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-offset);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: border-color var(--transition), transform var(--transition);
+}
+
+.activity-item:hover {
+  border-color: var(--color-border-hover);
+  transform: translateX(2px);
+}

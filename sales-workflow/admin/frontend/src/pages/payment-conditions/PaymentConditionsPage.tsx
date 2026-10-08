@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Icon } from '@maf/shared-admin-app';
+import { Icon, Input, Select, Switch, Modal } from '@maf/shared-admin-app';
 import { AdminShell } from '@/components/AdminShell';
 import { StatusBadge } from '@/components/StatusBadge';
 import { adminApi, type PaymentConditionItem } from '@/services/adminApiClient';
@@ -86,7 +86,7 @@ export function PaymentConditionsPage() {
       setShowModal(false);
       loadData();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Erro ao salvar condição de pagamento');
     } finally {
       setSaving(false);
     }
@@ -107,201 +107,256 @@ export function PaymentConditionsPage() {
       title="Condições de Pagamento"
       subtitle="Regras comerciais dinâmicas consumidas pelo QuoteAgent na emissão de orçamentos"
       action={
-        <button type="button" className="btn btn-primary" onClick={handleOpenCreate} style={{ fontSize: 11 }}>
+        <button type="button" className="btn btn-primary" onClick={handleOpenCreate} style={{ fontSize: 11, gap: 6 }}>
           <Icon name="plus" size={14} />
           <span>Nova Condição</span>
         </button>
       }
     >
-      <div className="surface-card" style={{ overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
-          <thead>
-            <tr style={{ background: 'var(--color-surface-offset)', borderBottom: '1px solid var(--color-border)', textAlign: 'left' }}>
-              <th style={{ padding: 'var(--space-3)' }}>Nome da Regra</th>
-              <th style={{ padding: 'var(--space-3)' }}>Método</th>
-              <th style={{ padding: 'var(--space-3)' }}>Parcelamento</th>
-              <th style={{ padding: 'var(--space-3)' }}>Juros</th>
-              <th style={{ padding: 'var(--space-3)' }}>Desconto Extra</th>
-              <th style={{ padding: 'var(--space-3)' }}>Status</th>
-              <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={7} style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                  Carregando condições...
-                </td>
+      <div className="surface-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
+            <thead>
+              <tr
+                style={{
+                  background: 'var(--color-surface-offset)',
+                  borderBottom: '1px solid var(--color-border)',
+                  textAlign: 'left',
+                }}
+              >
+                <th style={{ padding: 'var(--space-3)' }}>Nome da Regra</th>
+                <th style={{ padding: 'var(--space-3)' }}>Método</th>
+                <th style={{ padding: 'var(--space-3)' }}>Parcelamento</th>
+                <th style={{ padding: 'var(--space-3)' }}>Juros</th>
+                <th style={{ padding: 'var(--space-3)' }}>Desconto Extra</th>
+                <th style={{ padding: 'var(--space-3)' }}>Status</th>
+                <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Ações</th>
               </tr>
-            ) : conditions.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                  Nenhuma condição configurada.
-                </td>
-              </tr>
-            ) : (
-              conditions.map((item) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: 'var(--space-3)', fontWeight: 600 }}>{item.name}</td>
-                  <td style={{ padding: 'var(--space-3)', textTransform: 'uppercase', fontFamily: 'monospace' }}>
-                    {item.paymentMethod}
-                  </td>
-                  <td style={{ padding: 'var(--space-3)' }}>
-                    {item.maxInstallments === 1 ? 'À vista' : `Até ${item.maxInstallments}x`}
-                  </td>
-                  <td style={{ padding: 'var(--space-3)' }}>
-                    {item.interestFree ? 'Sem juros' : `${item.interestRate}% a.m.`}
-                  </td>
-                  <td style={{ padding: 'var(--space-3)', fontWeight: item.additionalDiscount > 0 ? 600 : 400, color: item.additionalDiscount > 0 ? 'var(--color-success)' : 'inherit' }}>
-                    {item.additionalDiscount > 0 ? `${item.additionalDiscount}% OFF` : '—'}
-                  </td>
-                  <td style={{ padding: 'var(--space-3)' }}>
-                    <StatusBadge status={item.active} />
-                  </td>
-                  <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => handleOpenEdit(item)}
-                        style={{ padding: '4px 8px' }}
-                        title="Editar"
-                      >
-                        <Icon name="pen-line" size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => handleDelete(item.id, item.name)}
-                        style={{ padding: '4px 8px', color: 'var(--color-danger)' }}
-                        title="Desativar"
-                      >
-                        <Icon name="x" size={13} />
-                      </button>
-                    </div>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      padding: 'var(--space-8)',
+                      textAlign: 'center',
+                      color: 'var(--color-text-muted)',
+                    }}
+                  >
+                    Carregando condições...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : conditions.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      padding: 'var(--space-8)',
+                      textAlign: 'center',
+                      color: 'var(--color-text-muted)',
+                    }}
+                  >
+                    Nenhuma condição configurada.
+                  </td>
+                </tr>
+              ) : (
+                conditions.map((item) => (
+                  <tr
+                    key={item.id}
+                    style={{
+                      borderBottom: '1px solid var(--color-border)',
+                      transition: 'background-color var(--transition)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--color-surface-offset)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <td style={{ padding: 'var(--space-3)', fontWeight: 600 }}>{item.name}</td>
+                    <td style={{ padding: 'var(--space-3)', textTransform: 'uppercase', fontFamily: 'monospace' }}>
+                      {item.paymentMethod}
+                    </td>
+                    <td style={{ padding: 'var(--space-3)' }}>
+                      {item.maxInstallments === 1 ? 'À vista' : `Até ${item.maxInstallments}x`}
+                    </td>
+                    <td style={{ padding: 'var(--space-3)' }}>
+                      {item.interestFree ? 'Sem juros' : `${item.interestRate}% a.m.`}
+                    </td>
+                    <td
+                      style={{
+                        padding: 'var(--space-3)',
+                        fontWeight: item.additionalDiscount > 0 ? 600 : 400,
+                        color: item.additionalDiscount > 0 ? 'var(--color-success)' : 'inherit',
+                      }}
+                    >
+                      {item.additionalDiscount > 0 ? `${item.additionalDiscount}% OFF` : '—'}
+                    </td>
+                    <td style={{ padding: 'var(--space-3)' }}>
+                      <StatusBadge status={item.active} />
+                    </td>
+                    <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: 'var(--space-1)' }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleOpenEdit(item)}
+                          style={{ padding: '4px 8px' }}
+                          title="Editar"
+                        >
+                          <Icon name="pen-line" size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleDelete(item.id, item.name)}
+                          style={{ padding: '4px 8px', color: 'var(--color-error)' }}
+                          title="Desativar"
+                        >
+                          <Icon name="x" size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'grid',
-            placeItems: 'center',
-            zIndex: 1000,
-          }}
-        >
-          <div className="surface-card" style={{ width: 480, padding: 'var(--space-5)' }}>
-            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-4)' }}>
-              {editing ? 'Editar Condição' : 'Nova Condição de Pagamento'}
-            </h3>
-
-            {error && (
-              <div style={{ padding: 'var(--space-2)', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-danger)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)', fontSize: 11 }}>
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: 'var(--space-3)' }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Nome da Regra *</label>
-                <input
-                  type="text"
-                  className="input"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Pix com 5% de desconto"
-                  style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Método</label>
-                  <select
-                    className="input"
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as any)}
-                    style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-                  >
-                    <option value="pix">Pix</option>
-                    <option value="credit_card">Cartão de Crédito</option>
-                    <option value="debit_card">Cartão de Débito</option>
-                    <option value="boleto">Boleto Bancário</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Máximo de Parcelas</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="36"
-                    className="input"
-                    value={maxInstallments}
-                    onChange={(e) => setMaxInstallments(e.target.value)}
-                    style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Desconto Extra (%)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    className="input"
-                    value={additionalDiscount}
-                    onChange={(e) => setAdditionalDiscount(e.target.value)}
-                    placeholder="Ex: 5 para 5%"
-                    style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Taxa de Juros (% a.m.)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    className="input"
-                    value={interestRate}
-                    onChange={(e) => {
-                      setInterestRate(e.target.value);
-                      setInterestFree(parseFloat(e.target.value) === 0);
-                    }}
-                    placeholder="0 para sem juros"
-                    style={{ width: '100%', fontSize: 'var(--text-xs)' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 'var(--space-4)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={interestFree} onChange={(e) => setInterestFree(e.target.checked)} />
-                  Sem juros
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={saving}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Salvando...' : 'Salvar'}
-                </button>
-              </div>
-            </form>
+      {/* Modal Padronizado de Criação / Edição */}
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editing ? 'Editar Condição de Pagamento' : 'Nova Condição de Pagamento'}
+        subtitle="Configure os parâmetros de juros, parcelas e descontos para orçamentos"
+        icon="credit-card"
+        maxWidth={520}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowModal(false)}
+              disabled={saving}
+              style={{ fontSize: 12, padding: '6px 16px' }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="form-payment-condition"
+              className="btn btn-primary"
+              disabled={saving}
+              style={{ fontSize: 12, padding: '6px 18px', gap: 6 }}
+            >
+              <Icon name="check" size={14} />
+              <span>{saving ? 'Gravando...' : 'Salvar Condição'}</span>
+            </button>
+          </>
+        }
+      >
+        {error && (
+          <div
+            style={{
+              padding: 'var(--space-3)',
+              background: 'rgba(239, 68, 68, 0.1)',
+              color: 'var(--color-error)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--text-xs)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <Icon name="alert-circle" size={14} />
+            <span>{error}</span>
           </div>
-        </div>
-      )}
+        )}
+
+        <form id="form-payment-condition" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          <Input
+            label="Nome da Regra"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex: Pix com 5% de desconto"
+            leftIcon="tag"
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+            <Select
+              label="Método"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value as any)}
+              leftIcon="credit-card"
+              options={[
+                { value: 'pix', label: 'Pix' },
+                { value: 'credit_card', label: 'Cartão de Crédito' },
+                { value: 'debit_card', label: 'Cartão de Débito' },
+                { value: 'boleto', label: 'Boleto Bancário' },
+              ]}
+            />
+
+            <Input
+              label="Máximo de Parcelas"
+              type="number"
+              min="1"
+              max="36"
+              value={maxInstallments}
+              onChange={(e) => setMaxInstallments(e.target.value)}
+              leftIcon="hash"
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+            <Input
+              label="Desconto Extra (%)"
+              type="number"
+              step="0.1"
+              value={additionalDiscount}
+              onChange={(e) => setAdditionalDiscount(e.target.value)}
+              placeholder="0"
+              leftIcon="percent"
+            />
+
+            <Input
+              label="Taxa de Juros (% a.m.)"
+              type="number"
+              step="0.1"
+              value={interestRate}
+              onChange={(e) => {
+                setInterestRate(e.target.value);
+                setInterestFree(parseFloat(e.target.value) === 0);
+              }}
+              placeholder="0"
+              leftIcon="percent"
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', paddingTop: 'var(--space-2)' }}>
+            <Switch
+              label="Sem Juros"
+              description="Habilita parcelamento sem cobrança de taxa"
+              checked={interestFree}
+              onChange={(val) => {
+                setInterestFree(val);
+                if (val) setInterestRate('0');
+              }}
+            />
+
+            <Switch
+              label="Condição Ativa"
+              description="Visível para o gerador de orçamento"
+              checked={active}
+              onChange={setActive}
+            />
+          </div>
+        </form>
+      </Modal>
     </AdminShell>
   );
 }

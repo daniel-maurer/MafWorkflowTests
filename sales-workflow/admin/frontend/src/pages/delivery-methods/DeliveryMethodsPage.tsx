@@ -1,27 +1,32 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Icon, Input, Textarea, Switch, Modal } from '@maf/shared-admin-app';
+import { Icon, Input, Select, Textarea, Switch, Modal } from '@maf/shared-admin-app';
 import { AdminShell } from '@/components/AdminShell';
 import { StatusBadge } from '@/components/StatusBadge';
-import { adminApi, type CategoryItem } from '@/services/adminApiClient';
+import { adminApi, type DeliveryMethodItem } from '@/services/adminApiClient';
 
-export function CategoryListPage() {
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
+export function DeliveryMethodsPage() {
+  const [methods, setMethods] = useState<DeliveryMethodItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
+  const [editing, setEditing] = useState<DeliveryMethodItem | null>(null);
 
   const [name, setName] = useState('');
+  const [type, setType] = useState('delivery');
+  const [price, setPrice] = useState('0');
   const [description, setDescription] = useState('');
-  const [slug, setSlug] = useState('');
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadData() {
+  useEffect(() => {
+    loadMethods();
+  }, []);
+
+  async function loadMethods() {
     setLoading(true);
     try {
-      const data = await adminApi.listCategories();
-      setCategories(data);
+      const data = await adminApi.listDeliveryMethods();
+      setMethods(data);
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -29,26 +34,24 @@ export function CategoryListPage() {
     }
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   function handleOpenCreate() {
-    setEditingCategory(null);
+    setEditing(null);
     setName('');
+    setType('delivery');
+    setPrice('0');
     setDescription('');
-    setSlug('');
     setActive(true);
     setError(null);
     setShowModal(true);
   }
 
-  function handleOpenEdit(cat: CategoryItem) {
-    setEditingCategory(cat);
-    setName(cat.name);
-    setDescription(cat.description || '');
-    setSlug(cat.slug);
-    setActive(cat.active);
+  function handleOpenEdit(item: DeliveryMethodItem) {
+    setEditing(item);
+    setName(item.name);
+    setType(item.type);
+    setPrice(String(item.price));
+    setDescription(item.description || '');
+    setActive(item.active);
     setError(null);
     setShowModal(true);
   }
@@ -60,44 +63,45 @@ export function CategoryListPage() {
 
     const payload = {
       name: name.trim(),
+      type,
+      price: parseFloat(price) || 0,
       description: description.trim() || undefined,
-      slug: slug.trim() || undefined,
       active,
     };
 
     try {
-      if (editingCategory) {
-        await adminApi.updateCategory(editingCategory.id, payload);
+      if (editing) {
+        await adminApi.updateDeliveryMethod(editing.id, payload);
       } else {
-        await adminApi.createCategory(payload);
+        await adminApi.createDeliveryMethod(payload);
       }
       setShowModal(false);
-      loadData();
+      loadMethods();
     } catch (err: any) {
-      setError(err.message || 'Erro ao salvar categoria');
+      setError(err.message || 'Erro ao salvar método de entrega');
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(id: string, catName: string) {
-    if (!window.confirm(`Deseja desativar a categoria "${catName}"?`)) return;
+  async function handleDelete(id: string, methodName: string) {
+    if (!window.confirm(`Deseja remover a opção "${methodName}"?`)) return;
     try {
-      await adminApi.deleteCategory(id);
-      loadData();
+      await adminApi.deleteDeliveryMethod(id);
+      loadMethods();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Erro ao excluir.');
     }
   }
 
   return (
     <AdminShell
-      title="Categorias de Produtos"
-      subtitle="Organização estruturada do catálogo para filtragem e classificação de intenções"
+      title="Formas de Entrega / Retirada"
+      subtitle="Modalidades de envio, entrega expressa e retirada física consultadas pelo QuoteAgent"
       action={
         <button type="button" className="btn btn-primary" onClick={handleOpenCreate} style={{ fontSize: 11, gap: 6 }}>
           <Icon name="plus" size={14} />
-          <span>Nova Categoria</span>
+          <span>Nova Forma</span>
         </button>
       }
     >
@@ -113,8 +117,9 @@ export function CategoryListPage() {
                 }}
               >
                 <th style={{ padding: 'var(--space-3)' }}>Nome</th>
-                <th style={{ padding: 'var(--space-3)' }}>Slug</th>
-                <th style={{ padding: 'var(--space-3)' }}>Descrição</th>
+                <th style={{ padding: 'var(--space-3)' }}>Modalidade</th>
+                <th style={{ padding: 'var(--space-3)' }}>Preço Fixo</th>
+                <th style={{ padding: 'var(--space-3)' }}>Instruções / Descrição</th>
                 <th style={{ padding: 'var(--space-3)' }}>Status</th>
                 <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Ações</th>
               </tr>
@@ -123,33 +128,33 @@ export function CategoryListPage() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     style={{
                       padding: 'var(--space-8)',
                       textAlign: 'center',
                       color: 'var(--color-text-muted)',
                     }}
                   >
-                    Carregando categorias...
+                    Carregando formas de entrega...
                   </td>
                 </tr>
-              ) : categories.length === 0 ? (
+              ) : methods.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     style={{
                       padding: 'var(--space-8)',
                       textAlign: 'center',
                       color: 'var(--color-text-muted)',
                     }}
                   >
-                    Nenhuma categoria cadastrada.
+                    Nenhuma forma de entrega ou retirada cadastrada.
                   </td>
                 </tr>
               ) : (
-                categories.map((c) => (
+                methods.map((m) => (
                   <tr
-                    key={c.id}
+                    key={m.id}
                     style={{
                       borderBottom: '1px solid var(--color-border)',
                       transition: 'background-color var(--transition)',
@@ -161,22 +166,43 @@ export function CategoryListPage() {
                       e.currentTarget.style.backgroundColor = 'transparent';
                     }}
                   >
-                    <td style={{ padding: 'var(--space-3)', fontWeight: 600 }}>{c.name}</td>
-                    <td style={{ padding: 'var(--space-3)', fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
-                      {c.slug}
+                    <td style={{ padding: 'var(--space-3)', fontWeight: 600 }}>{m.name}</td>
+                    <td style={{ padding: 'var(--space-3)' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          background: m.type === 'pickup' ? 'var(--color-primary-glow)' : 'var(--color-surface-offset)',
+                          color: m.type === 'pickup' ? 'var(--color-primary)' : 'var(--color-text)',
+                          border: '1px solid var(--color-border)',
+                        }}
+                      >
+                        <Icon name={m.type === 'pickup' ? 'store' : 'truck'} size={12} />
+                        {m.type === 'pickup' ? 'Retirada na Loja' : 'Entrega'}
+                      </span>
+                    </td>
+                    <td style={{ padding: 'var(--space-3)', fontWeight: 600 }}>
+                      {m.price === 0
+                        ? 'Grátis'
+                        : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(m.price)}
                     </td>
                     <td style={{ padding: 'var(--space-3)', color: 'var(--color-text-muted)' }}>
-                      {c.description || '—'}
+                      {m.description || '—'}
                     </td>
                     <td style={{ padding: 'var(--space-3)' }}>
-                      <StatusBadge status={c.active} />
+                      <StatusBadge status={m.active} />
                     </td>
                     <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 'var(--space-1)' }}>
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => handleOpenEdit(c)}
+                          onClick={() => handleOpenEdit(m)}
                           style={{ padding: '4px 8px' }}
                           title="Editar"
                         >
@@ -185,9 +211,9 @@ export function CategoryListPage() {
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => handleDelete(c.id, c.name)}
+                          onClick={() => handleDelete(m.id, m.name)}
                           style={{ padding: '4px 8px', color: 'var(--color-error)' }}
-                          title="Desativar"
+                          title="Excluir"
                         >
                           <Icon name="x" size={14} />
                         </button>
@@ -205,10 +231,10 @@ export function CategoryListPage() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
-        subtitle="Defina o nome, identificador slug e descrição da categoria"
-        icon="tag"
-        maxWidth={480}
+        title={editing ? 'Editar Forma de Entrega' : 'Nova Forma de Entrega'}
+        subtitle="Defina o nome da modalidade, tipo e taxa fixa cobrada"
+        icon="truck"
+        maxWidth={500}
         footer={
           <>
             <button
@@ -222,13 +248,13 @@ export function CategoryListPage() {
             </button>
             <button
               type="submit"
-              form="form-category"
+              form="form-delivery-method"
               className="btn btn-primary"
               disabled={saving}
               style={{ fontSize: 12, padding: '6px 18px', gap: 6 }}
             >
               <Icon name="check" size={14} />
-              <span>{saving ? 'Gravando...' : 'Salvar Categoria'}</span>
+              <span>{saving ? 'Gravando...' : 'Salvar'}</span>
             </button>
           </>
         }
@@ -251,42 +277,55 @@ export function CategoryListPage() {
           </div>
         )}
 
-        <form id="form-category" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <form id="form-delivery-method" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <Input
-            label="Nome da Categoria"
+            label="Nome da Opção"
             required
             value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!editingCategory) {
-                setSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'));
-              }
-            }}
-            placeholder="Ex: Camisetas"
-            leftIcon="tag"
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex: Entrega Expressa via Uber Flash"
+            leftIcon="truck"
+            helperText="Nome apresentado ao cliente durante a cotação"
           />
 
-          <Input
-            label="Slug (Identificador na URL)"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder="camisetas"
-            leftIcon="link"
-            helperText="Usado em rotas e filtros do sistema"
-          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+            <Select
+              label="Modalidade"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              leftIcon="package"
+              options={[
+                { value: 'delivery', label: 'Entrega (Uber / Correios / Motoboy)' },
+                { value: 'pickup', label: 'Retirada na Loja Física' },
+              ]}
+            />
+
+            <Input
+              label="Taxa Fixa (R$)"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              leftIcon="dollar-sign"
+              helperText="0 para frete grátis"
+            />
+          </div>
 
           <Textarea
-            label="Descrição"
-            rows={3}
+            label="Instruções / Detalhes"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Breve descrição da categoria para ajudar o classificador de intenções..."
+            rows={2}
+            placeholder="Ex: Disponível para retirada de segunda a sábado das 9h às 18h"
+            helperText="Informações adicionais que o Agente repassará ao cliente"
           />
 
           <div style={{ paddingTop: 'var(--space-2)' }}>
             <Switch
-              label="Categoria Ativa"
-              description="Habilita esta categoria para exibição e buscas"
+              label="Opção Ativa"
+              description="Habilita esta opção de entrega nos orçamentos"
               checked={active}
               onChange={setActive}
             />

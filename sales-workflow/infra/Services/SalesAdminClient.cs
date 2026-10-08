@@ -43,6 +43,26 @@ public sealed class SalesAdminClient : IDisposable
         }
     }
 
+    // ── Categorias ──
+
+    public async Task<List<CategoryDto>> GetCategoriesAsync(bool? active = true, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = active.HasValue ? $"categories?active={active.Value}" : "categories";
+            var response = await _http.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode) return [];
+
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<List<CategoryDto>>(json, JsonOptions) ?? [];
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SalesAdminClient] Erro ao listar categorias: {ex.Message}");
+            return [];
+        }
+    }
+
     // ── Produtos ──
 
     public async Task<List<ProductInfo>> SearchProductsSemanticAsync(string query, int top = 5, CancellationToken ct = default)
@@ -307,8 +327,210 @@ public sealed class SalesAdminClient : IDisposable
         }
     }
 
+    // ── Nova API: Delivery, Store, Orders, Conversations ──
+
+    public async Task<List<DeliveryMethodDto>> GetDeliveryMethodsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync("delivery-methods", ct);
+            if (!response.IsSuccessStatusCode) return [];
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<List<DeliveryMethodDto>>(json, JsonOptions) ?? [];
+        }
+        catch { return []; }
+    }
+
+    public async Task<StoreInfoDto?> GetStoreInfoAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync("store-info", ct);
+            if (!response.IsSuccessStatusCode) return null;
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<StoreInfoDto>(json, JsonOptions);
+        }
+        catch { return null; }
+    }
+
+    public async Task<OrderDto?> CreateOrderAsync(CreateOrderRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = new StringContent(JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8, "application/json");
+            var response = await _http.PostAsync("orders", content, ct);
+            if (!response.IsSuccessStatusCode) return null;
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<OrderDto>(json, JsonOptions);
+        }
+        catch { return null; }
+    }
+
+    public async Task<ConversationDto?> SaveConversationAsync(CreateConversationRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = new StringContent(JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8, "application/json");
+            var response = await _http.PostAsync("conversations", content, ct);
+            if (!response.IsSuccessStatusCode) return null;
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<ConversationDto>(json, JsonOptions);
+        }
+        catch { return null; }
+    }
+
+    public async Task<bool> SaveConversationMessageAsync(Guid conversationId, CreateConversationMessageRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = new StringContent(JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8, "application/json");
+            var response = await _http.PostAsync($"conversations/{conversationId}/messages", content, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    public async Task<bool> SyncConversationMessageAsync(SyncConversationMessageRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = new StringContent(JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8, "application/json");
+            var response = await _http.PostAsync("conversations/sync-message", content, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SalesAdminClient] Erro ao sincronizar mensagem da conversa: {ex.Message}");
+            return false;
+        }
+    }
+
+    public async Task<List<CampaignDto>> GetActiveCampaignsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync("campaigns/active-now", ct);
+            if (!response.IsSuccessStatusCode) return [];
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<List<CampaignDto>>(json, JsonOptions) ?? [];
+        }
+        catch { return []; }
+    }
+
+    public async Task<string> GetActiveCampaignsJsonAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync("campaigns/active-now", ct);
+            if (!response.IsSuccessStatusCode) return "[]";
+            return await response.Content.ReadAsStringAsync(ct);
+        }
+        catch { return "[]"; }
+    }
+
     public void Dispose()
     {
         _http.Dispose();
     }
 }
+
+public class DeliveryMethodDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public decimal Price { get; set; }
+    public bool Active { get; set; }
+}
+
+public class StoreInfoDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+}
+
+public class OrderDto
+{
+    public Guid Id { get; set; }
+    public Guid CustomerId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public decimal TotalAmount { get; set; }
+}
+
+public class CreateOrderRequest
+{
+    public Guid CustomerId { get; set; }
+    public string Status { get; set; } = "pending";
+    public decimal TotalAmount { get; set; }
+    public string? DeliveryMethod { get; set; }
+    public string? PaymentMethod { get; set; }
+    public List<CreateOrderItemRequest> Items { get; set; } = new();
+}
+
+public class CreateOrderItemRequest
+{
+    public Guid ProductId { get; set; }
+    public string Sku { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal TotalPrice { get; set; }
+}
+
+public class ConversationDto
+{
+    public Guid Id { get; set; }
+}
+
+public class CreateConversationRequest
+{
+    public Guid? CustomerId { get; set; }
+    public string SessionId { get; set; } = string.Empty;
+    public string Status { get; set; } = "active";
+    public List<CreateConversationMessageRequest> Messages { get; set; } = new();
+}
+
+public class CreateConversationMessageRequest
+{
+    public string Role { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+}
+
+public class SyncConversationMessageRequest
+{
+    public string SessionId { get; set; } = string.Empty;
+    public Guid? CustomerId { get; set; }
+    public string Role { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string? Status { get; set; } = "active";
+}
+
+public class CampaignDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public DateTimeOffset StartDate { get; set; }
+    public DateTimeOffset EndDate { get; set; }
+    public bool IsActive { get; set; }
+    public bool FreeShipping { get; set; }
+    public decimal GlobalDiscountPercent { get; set; }
+    public decimal Discount1Item { get; set; }
+    public decimal Discount2Items { get; set; }
+    public decimal Discount3PlusItems { get; set; }
+    public string? CustomRulesJson { get; set; }
+}
+
+public class CategoryDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Slug { get; set; } = string.Empty;
+    public bool Active { get; set; }
+}
+
